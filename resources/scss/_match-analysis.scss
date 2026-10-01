@@ -1,0 +1,121 @@
+.bet-verdict{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:22px;border:1px solid #3ee68b55;background:linear-gradient(135deg,#143529,#0d211d 58%,#10232d);border-radius:20px;padding:26px;margin-bottom:18px;box-shadow:0 18px 60px #0003}
+.bet-verdict.caution{border-color:#fbbf4a55;background:linear-gradient(135deg,#302718,#171d20)}
+.verdict-label{display:inline-flex;align-items:center;gap:8px;color:var(--green);font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:.12em}
+.verdict-copy h2{font-size:clamp(29px,4vw,46px);letter-spacing:-.05em;margin:12px 0 8px}
+.verdict-meaning{color:#d5e5dc;font-size:16px;margin:0;line-height:1.55}
+.verdict-source{display:flex;gap:14px;flex-wrap:wrap;margin-top:18px;color:var(--muted);font-size:12px}
+.verdict-source span{display:inline-flex;align-items:center;gap:6px}
+.verdict-odds{align-self:start;min-width:120px;text-align:center;padding:16px 20px;border-radius:15px;background:#07130f;border:1px solid #3ee68b44}
+.verdict-odds span{display:block;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.1em}
+.verdict-odds b{display:block;color:var(--green);font-size:38px;margin-top:4px}
+.verdict-metrics{grid-column:1/-1;display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding-top:19px;border-top:1px solid #ffffff14}
+.verdict-metrics div{padding:12px 14px;border-radius:11px;background:#06140f66}
+.verdict-metrics span{display:block;color:var(--muted);font-size:11px}
+.verdict-metrics b{display:block;font-size:17px;margin-top:5px}
+.positive{color:var(--green)!important}.negative{color:var(--red)!important}
+.match-page-actions{display:flex;align-items:center;gap:9px}.match-ticket-back{display:inline-flex;align-items:center;gap:6px;padding:7px 9px;border:1px solid var(--line);border-radius:9px;background:#ffffff05;color:var(--muted);font-size:11px;font-weight:750}.match-ticket-back:hover{border-color:#3ee68b55;color:var(--green);background:#3ee68b0a}
+.decision-grid{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:18px;margin-bottom:18px}
+.decision-grid h2,.analysis-columns h2{margin:0 0 14px}
+.reason-list{list-style:none;padding:0;margin:20px 0 0;display:grid;gap:13px}
+.reason-list li{display:flex;gap:12px;align-items:flex-start;padding:12px;border-radius:11px;background:#07131c;color:#c8d5dc;line-height:1.5;font-size:13px}
+.reason-list svg{color:var(--green);flex:0 0 auto}
+.decision-box .notice{margin-bottom:0}.decision-line{display:flex;justify-content:space-between;gap:15px;padding:13px 0;border-bottom:1px solid var(--line);font-size:13px}.decision-line span{color:var(--muted)}
+.analysis-columns{margin-top:18px}.section-head.compact{margin:0 0 10px}
+.alternative-list{display:grid;gap:0}.alternative{display:flex;justify-content:space-between;gap:16px;padding:13px 0;border-bottom:1px solid var(--line);text-align:right}.alternative>div:first-child{text-align:left}.alternative small{display:block;color:var(--muted);margin-top:4px;font-size:11px}
+@media(max-width:900px){.bet-verdict,.decision-grid{grid-template-columns:1fr}.verdict-odds{justify-self:start}.verdict-metrics{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:700px){.verdict-metrics{grid-template-columns:1fr 1fr}.bet-verdict{padding:19px}.verdict-copy h2{font-size:31px}}
+.winbet-link{width:100%;margin-top:14px;background:#f4c400;color:#171300}.winbet-link:hover{filter:brightness(1.05)}.winbet-note{display:block;color:var(--muted);font-size:10px;text-align:center;margin-top:7px}
+
+/* Ticket detail layout */
+.ticket-detail-page{width:min(1440px,calc(100vw - 40px));margin-left:50%;transform:translateX(-50%)}
+.ticket-summary-card{padding:0;overflow:hidden;margin-bottom:20px}
+.ticket-summary-main{display:grid;grid-template-columns:minmax(180px,1.2fr) repeat(3,minmax(120px,1fr)) minmax(190px,.95fr);align-items:stretch;gap:12px;padding:18px}
+.ticket-summary-heading{display:flex;flex-direction:column;justify-content:center;min-width:0}
+.ticket-summary-heading .eyebrow{margin-bottom:6px}.ticket-summary-heading h2{margin:0;font-size:22px;letter-spacing:-.03em}
+.ticket-reference-form{margin-top:10px}.ticket-reference-form label{display:block;margin-bottom:4px;color:var(--muted);font-size:9px;font-weight:750}.ticket-reference-control{display:flex;gap:5px}.ticket-reference-control .field{min-width:0;padding:7px 9px;font-size:11px}.ticket-reference-control .btn{flex:0 0 34px;width:34px;padding:0}.ticket-status-field{width:auto;min-width:145px;margin-top:7px;padding:7px 10px;font-size:12px}
+.ticket-summary-metric{display:flex;flex-direction:column;justify-content:center;min-height:82px;padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:#07131c}
+.ticket-summary-metric span{color:var(--muted);font-size:11px}.ticket-summary-metric b{margin-top:6px;font-size:25px;line-height:1;color:var(--text)}
+.ticket-copy-button{align-self:center;width:100%;min-height:48px}
+.ticket-responsible-row{display:flex;align-items:center;gap:9px;padding:10px 18px;border-top:1px solid var(--line);background:#fbbf4a08;color:#cdbd91;font-size:11px;line-height:1.45}
+.ticket-responsible-row svg{flex:0 0 auto;color:var(--amber)}
+.ticket-selection-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;align-items:stretch}
+.ticket-selection-card{display:flex;flex-direction:column;min-width:0;height:100%;padding:20px;background:linear-gradient(145deg,#12212e,#0c1822)}
+.ticket-selection-card .teams{min-height:44px;margin:16px 0}
+.ticket-explanation{color:var(--muted);font-size:12px;line-height:1.65;margin:15px 0 0}
+.ticket-card-footer{display:flex;flex-direction:column;margin-top:auto;padding-top:16px}
+.ticket-card-footer .winbet-link{margin-top:0}
+.ticket-card-actions{display:flex;align-items:center;gap:8px;margin-top:12px;flex-wrap:wrap}
+.ticket-card-actions form{display:flex;margin:0}.ticket-card-actions .btn{white-space:nowrap}
+.ticket-list-actions{display:flex;align-items:center;justify-content:flex-end;gap:7px}.ticket-list-actions form{display:flex;margin:0}.ticket-delete-button{width:34px;height:34px;padding:0;color:var(--red);border-color:#fb65745c;background:#fb657416}.ticket-delete-button:hover{background:#fb657428;border-color:var(--red)}
+.status.placed_winbet{background:#64a8ff18;color:var(--blue)}
+
+@media(max-width:1050px){
+  .ticket-summary-main{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;padding:14px}
+  .ticket-summary-heading{grid-column:span 2}.ticket-copy-button{align-self:stretch}
+  .ticket-selection-card{padding:14px}
+  .ticket-selection-card .match-meta{font-size:10px}
+  .ticket-selection-card .teams{min-height:36px;margin:10px 0;font-size:14px}
+  .ticket-selection-card .rec-row{padding-top:10px}
+  .ticket-selection-card .odds{font-size:17px}
+  .ticket-selection-card .score{padding:4px 6px;font-size:9px}
+  .ticket-selection-card .market{font-size:12px}
+  .ticket-explanation{font-size:10.5px;line-height:1.42;margin-top:10px}
+  .ticket-summary-metric{min-height:70px;padding:11px 13px}
+  .ticket-summary-metric b{font-size:21px}
+  .ticket-card-footer{padding-top:11px}
+  .ticket-card-footer .winbet-link{padding:9px 10px;font-size:11px}
+  .ticket-card-actions{gap:6px;margin-top:9px}
+  .ticket-card-actions .btn{padding:7px 8px;font-size:10px}
+}
+@media(max-width:820px){
+  .ticket-selection-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(min-width:701px) and (max-width:900px){
+  body:has(.ticket-detail-page) .nav{height:auto;min-height:64px;flex-wrap:wrap}
+  body:has(.ticket-detail-page) .mobile-toggle{display:block;margin-left:auto}
+  body:has(.ticket-detail-page) .navlinks{display:none;flex-basis:100%;flex-direction:column;padding-bottom:12px}
+  body:has(.ticket-detail-page) .navlinks.open{display:flex}
+  body:has(.ticket-detail-page) .nav-spacer,body:has(.ticket-detail-page) .demo-pill{display:none}
+}
+@media(max-width:767px){
+  .ticket-detail-page{width:calc(100vw - 24px)}
+  .ticket-detail-page .page-head{margin-bottom:16px;gap:10px}
+  .ticket-detail-page .page-head h1{font-size:26px;line-height:1}
+  .ticket-detail-page .page-head p{font-size:12px}
+  .ticket-detail-page .page-head .eyebrow{margin-bottom:8px;font-size:10px}
+  .ticket-detail-page .page-head>.btn{padding:9px 12px;font-size:12px}
+  .ticket-summary-card{margin-bottom:14px;border-radius:13px}
+  .ticket-summary-main{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:11px}
+  .ticket-summary-heading{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) minmax(130px,.8fr);grid-template-rows:auto auto auto;align-items:center;column-gap:10px}
+  .ticket-summary-heading .eyebrow{grid-column:1;margin:0 0 3px;font-size:9px}
+  .ticket-summary-heading h2{grid-column:1;font-size:17px}
+  .ticket-summary-heading .ticket-status-form{grid-column:2;grid-row:1/3}
+  .ticket-reference-form{grid-column:1/-1;grid-row:3;margin-top:8px}.ticket-reference-form label{font-size:8px}.ticket-reference-control .field{padding:6px 8px;font-size:10px}.ticket-reference-control .btn{flex-basis:31px;width:31px}
+  .ticket-status-field{width:100%;min-width:0;margin:0;padding:7px 9px;font-size:11px}
+  .ticket-summary-metric{min-width:0;min-height:58px;padding:8px;border-radius:9px}
+  .ticket-summary-metric span{font-size:9px;line-height:1.2}
+  .ticket-summary-metric b{margin-top:4px;font-size:18px}
+  .ticket-copy-button{grid-column:1/-1;min-height:38px;padding:9px 12px;font-size:12px}
+  .ticket-responsible-row{padding:8px 11px;gap:7px;font-size:9px;line-height:1.35}
+  .ticket-responsible-row svg{width:14px;height:14px}
+  .ticket-selection-grid{grid-template-columns:minmax(0,1fr);gap:16px}
+  .ticket-selection-card{padding:13px;border-radius:13px}
+  .ticket-selection-card .match-meta{font-size:10px}
+  .ticket-selection-card .teams{min-height:0;margin:10px 0;font-size:15px}
+  .ticket-selection-card .rec-row{padding-top:10px}
+  .ticket-selection-card .odds{font-size:17px}
+  .ticket-selection-card .score{padding:4px 6px;font-size:9px}
+  .ticket-selection-card .market{font-size:13px}
+  .ticket-explanation{margin-top:10px;font-size:10.5px;line-height:1.42}
+  .ticket-card-footer{padding-top:11px}
+  .ticket-card-footer .winbet-link{min-height:36px;padding:8px 10px;font-size:11px}
+  .winbet-note{margin-top:5px;font-size:9px;text-align:left}
+  .ticket-card-actions{display:grid;grid-template-columns:1fr 1fr auto;gap:6px;margin-top:9px}
+  .ticket-card-actions .btn{width:100%;padding:7px 8px;font-size:10px}
+}
+@media(max-width:420px){
+  .ticket-summary-heading{grid-template-columns:minmax(0,1fr) minmax(118px,.85fr)}
+  .ticket-summary-main{padding:10px;gap:7px}
+  .ticket-summary-metric{padding:7px 6px}
+  .ticket-summary-metric b{font-size:16px}
+}
