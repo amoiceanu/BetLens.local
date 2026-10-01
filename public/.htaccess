@@ -23,3 +23,17 @@
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteRule ^ index.php [L]
 </IfModule>
+
+ServerSignature Off
+
+<IfModule mod_headers.c>
+    Header always unset X-Powered-By
+</IfModule>
+
+<IfModule php_module>
+    php_flag expose_php Off
+</IfModule>
+
+<IfModule mod_php.c>
+    php_flag expose_php Off
+</IfModule>

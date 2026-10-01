@@ -16,6 +16,7 @@ use App\Services\FootballStatsService;
 use App\Services\MatchDataService;
 use App\Services\TicketBuilderService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
 class BetLensController extends Controller
@@ -148,12 +149,26 @@ class BetLensController extends Controller
         return back()->with($source->status==='healthy'?'success':'warning',$message)->with('verification_result',$result);
     }
 
-    public function adminLogin(){return view('admin.login');}
-    public function adminAuthenticate(Request $request){$data=$request->validate(['password'=>'required']); if(!hash_equals((string)env('BETLENS_ADMIN_PASSWORD','betlens-local'),$data['password'])) return back()->withErrors(['password'=>'Parolă incorectă.']); $request->session()->put('betlens_admin',true); return redirect()->route('admin');}
-    private function authorizeAdmin(Request $request): void { abort_unless($request->session()->get('betlens_admin'),403); }
-    public function admin(Request $request){if(!$request->session()->get('betlens_admin')) return redirect()->route('admin.login'); return view('admin.index',['leagues'=>League::withCount(['teams','matches'])->get(),'markets'=>Market::get(),'settings'=>ApplicationSetting::where('group','risk')->get(),'recommendations'=>Recommendation::with(['match.homeTeam','match.awayTeam'])->latest()->take(10)->get()]);}
-    public function sync(Request $request){$this->authorizeAdmin($request); SyncFootballData::dispatch(); return back()->with('success','Sincronizarea a fost adăugată în coadă.');}
-    public function toggleLeague(Request $request,League $league){$this->authorizeAdmin($request);$league->update(['active'=>!$league->active]);return back()->with('success','Statusul ligii a fost actualizat.');}
-    public function toggleMarket(Request $request,Market $market){$this->authorizeAdmin($request);$market->update(['active'=>!$market->active]);return back()->with('success','Piața a fost actualizată.');}
-    public function settings(Request $request){$this->authorizeAdmin($request);$data=$request->validate(['profile'=>'required|in:conservator,echilibrat,agresiv','min_probability'=>'required|numeric|min:0|max:1','min_value'=>'required|numeric|min:-1|max:1','min_confidence'=>'required|integer|min:0|max:100']);ApplicationSetting::updateOrCreate(['key'=>'risk.'.$data['profile']],['group'=>'risk','value'=>collect($data)->except('profile')->all()]);return back()->with('success','Pragurile au fost salvate.');}
+    public function adminLogin(Request $request){return $request->session()->get('betlens_admin')===true?redirect()->route('admin'):view('admin.login');}
+    public function adminAuthenticate(Request $request)
+    {
+        $data=$request->validate(['password'=>'required|string|max:255']);
+        $hash=(string)config('services.betlens.admin_password_hash');
+        abort_if($hash==='',503,'Autentificarea de administrator nu este configurată.');
+        if(!Hash::check($data['password'],$hash)) return back()->withErrors(['password'=>'Date de autentificare incorecte.']);
+        $request->session()->regenerate();
+        $request->session()->put('betlens_admin',true);
+        return redirect()->intended(route('admin'));
+    }
+    public function adminLogout(Request $request)
+    {
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+        return redirect()->route('admin.login');
+    }
+    public function admin(){return view('admin.index',['leagues'=>League::withCount(['teams','matches'])->get(),'markets'=>Market::get(),'settings'=>ApplicationSetting::where('group','risk')->get(),'recommendations'=>Recommendation::with(['match.homeTeam','match.awayTeam'])->latest()->take(10)->get()]);}
+    public function sync(){SyncFootballData::dispatch(); return back()->with('success','Sincronizarea a fost adăugată în coadă.');}
+    public function toggleLeague(League $league){$league->update(['active'=>!$league->active]);return back()->with('success','Statusul ligii a fost actualizat.');}
+    public function toggleMarket(Market $market){$market->update(['active'=>!$market->active]);return back()->with('success','Piața a fost actualizată.');}
+    public function settings(Request $request){$data=$request->validate(['profile'=>'required|in:conservator,echilibrat,agresiv','min_probability'=>'required|numeric|min:0|max:1','min_value'=>'required|numeric|min:-1|max:1','min_confidence'=>'required|integer|min:0|max:100']);ApplicationSetting::updateOrCreate(['key'=>'risk.'.$data['profile']],['group'=>'risk','value'=>collect($data)->except('profile')->all()]);return back()->with('success','Pragurile au fost salvate.');}
 }

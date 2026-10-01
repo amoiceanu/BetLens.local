@@ -34,6 +34,10 @@ return [
         'markets' => env('ODDS_API_MARKETS', 'h2h,totals'),
     ],
 
+    'betlens' => [
+        'admin_password_hash' => env('BETLENS_ADMIN_PASSWORD_HASH'),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),

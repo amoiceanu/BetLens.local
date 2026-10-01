@@ -17,9 +17,12 @@ Route::get('/performanta',[BetLensController::class,'performance'])->name('perfo
 Route::get('/surse-date',[BetLensController::class,'dataSources'])->name('data-sources');
 Route::post('/surse-date/{source}/verifica',[BetLensController::class,'verifyDataSource'])->middleware('throttle:10,1')->name('data-sources.verify');
 Route::get('/admin/login',[BetLensController::class,'adminLogin'])->name('admin.login');
-Route::post('/admin/login',[BetLensController::class,'adminAuthenticate'])->name('admin.authenticate');
-Route::get('/admin',[BetLensController::class,'admin'])->name('admin');
-Route::post('/admin/sync',[BetLensController::class,'sync'])->name('admin.sync');
-Route::patch('/admin/ligi/{league}/toggle',[BetLensController::class,'toggleLeague'])->name('admin.leagues.toggle');
-Route::patch('/admin/piete/{market}/toggle',[BetLensController::class,'toggleMarket'])->name('admin.markets.toggle');
-Route::put('/admin/setari',[BetLensController::class,'settings'])->name('admin.settings');
+Route::post('/admin/login',[BetLensController::class,'adminAuthenticate'])->middleware('throttle:admin-login')->name('admin.authenticate');
+Route::middleware('admin.auth')->group(function(){
+    Route::get('/admin',[BetLensController::class,'admin'])->name('admin');
+    Route::post('/admin/logout',[BetLensController::class,'adminLogout'])->name('admin.logout');
+    Route::post('/admin/sync',[BetLensController::class,'sync'])->name('admin.sync');
+    Route::patch('/admin/ligi/{league}/toggle',[BetLensController::class,'toggleLeague'])->name('admin.leagues.toggle');
+    Route::patch('/admin/piete/{market}/toggle',[BetLensController::class,'toggleMarket'])->name('admin.markets.toggle');
+    Route::put('/admin/setari',[BetLensController::class,'settings'])->name('admin.settings');
+});
