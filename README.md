@@ -48,6 +48,8 @@ php artisan schedule:work
 php artisan test
 ```
 
+GitHub Actions rulează întreaga suită pe fiecare pull request către `main` și la fiecare push pe `main`. Pipeline-ul include testele de securitate, build-ul frontend, `composer audit`, `npm audit` și impune minimum 80% coverage pe linii.
+
 ## Expunere publică
 
 În producție folosește HTTPS și configurează cel puțin:
