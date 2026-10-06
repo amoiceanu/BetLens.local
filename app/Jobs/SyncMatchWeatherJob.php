@@ -1,0 +1,11 @@
+<?php
+namespace App\Jobs;
+use App\Models\DataSource;
+use App\Models\FootballMatch;
+use App\Models\MatchWeatherSnapshot;
+use App\Services\Providers\OpenMeteoProvider;
+use App\Services\SourcePayloadStoreService;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Queue\Queueable;
+use Throwable;
+class SyncMatchWeatherJob implements ShouldQueue { use Queueable; public int $tries=3; public array $backoff=[60,300,900]; public function __construct(public bool $imminentOnly=false){} public function handle(OpenMeteoProvider $provider,SourcePayloadStoreService $store): void { $started=microtime(true);$source=DataSource::where('slug','open-meteo')->firstOrFail();$query=FootballMatch::with('homeTeam')->where('kickoff_at','>',now())->orderBy('kickoff_at');$this->imminentOnly?$query->where('kickoff_at','<=',now()->addDay()):$query->where('kickoff_at','<=',now()->addDays(16));$matches=$query->get();$saved=$unavailable=0;try{foreach($matches as $match){$weather=$provider->weatherForMatch($match);if($weather['status']!=='available'){$unavailable++;continue;}if(isset($weather['coordinates']))$match->update(['venue_latitude'=>$weather['coordinates']['latitude'],'venue_longitude'=>$weather['coordinates']['longitude'],'venue_timezone'=>$weather['coordinates']['timezone']]);MatchWeatherSnapshot::create(['match_id'=>$match->id,'provider'=>'open-meteo','forecast_for'=>$weather['forecast_for'],'fetched_at'=>now(),'temperature_c'=>$weather['temperature_c'],'precipitation_mm'=>$weather['precipitation_mm'],'precipitation_probability'=>$weather['precipitation_probability'],'wind_speed_kmh'=>$weather['wind_speed_kmh'],'wind_direction'=>$weather['wind_direction'],'weather_code'=>$weather['weather_code'],'raw_payload'=>$weather['raw_payload']]);$saved++;}$message="$saved prognoze salvate; $unavailable meciuri fără coordonate sau prognoză disponibilă.";$source->update(['status'=>'healthy','last_checked_at'=>now(),'last_message'=>$message,'last_database_records'=>$source->records()->count()+MatchWeatherSnapshot::where('provider','open-meteo')->count()]);$store->log('open-meteo','weather','healthy',$saved,$message,$started);}catch(Throwable $e){$store->log('open-meteo','weather','unavailable',$saved,'Sincronizarea meteo a eșuat: '.str($e->getMessage())->limit(160),$started);throw $e;}} }

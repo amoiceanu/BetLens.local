@@ -33,6 +33,17 @@
 
 <div class="page-head"><div><p class="eyebrow">{{ $match->league->name }} · {{ $match->kickoff_at->format('d M Y, H:i') }}</p><h1>{{ $match->homeTeam->name }} – {{ $match->awayTeam->name }}</h1><p>{{ $match->venue ?: 'Stadion neconfirmat' }}</p></div><div class="match-page-actions">@if($backTicket)<a class="match-ticket-back" href="{{ route('tickets.show',$backTicket) }}"><i data-lucide="arrow-left" size="14"></i>Biletul meu</a>@endif<span class="pill">Date verificate</span></div></div>
 
+@php($weather=$match->latestWeatherSnapshot)
+<section class="card weather-card">
+    <div class="weather-card-heading"><div><p class="eyebrow">Context secundar</p><h2>Condiții meteo estimate</h2></div><i data-lucide="cloud-sun" size="26"></i></div>
+    @if($weather)
+    <div class="weather-metrics"><div><span>Temperatură</span><b>{{ $weather->temperature_c!==null?number_format($weather->temperature_c,1,',','.').'°C':'Indisponibil' }}</b></div><div><span>Precipitații</span><b>{{ $weather->precipitation_mm!==null?number_format($weather->precipitation_mm,1,',','.').' mm':'Indisponibil' }}</b></div><div><span>Probabilitate ploaie</span><b>{{ $weather->precipitation_probability!==null?$weather->precipitation_probability.'%':'Indisponibil' }}</b></div><div><span>Vânt</span><b>{{ $weather->wind_speed_kmh!==null?number_format($weather->wind_speed_kmh,1,',','.').' km/h':'Indisponibil' }}</b></div><div><span>Direcție vânt</span><b>{{ $weather->wind_direction!==null?$weather->wind_direction.'°':'Indisponibil' }}</b></div><div><span>Condiție</span><b>{{ $weather->condition_label }}</b></div></div>
+    <small>Open-Meteo · prognoză pentru {{ $weather->forecast_for->format('d.m.Y H:i') }} · actualizată {{ $weather->fetched_at->diffForHumans() }}</small>
+    @else
+    <p class="weather-unavailable">Indisponibil — lipsesc coordonatele stadionului/orașului sau prognoza nu acoperă încă data meciului.</p>
+    @endif
+</section>
+
 @if($bestRecommendation)
 <section class="bet-verdict {{ $bestRecommendation->eligible?'recommended':'caution' }}">
     <div class="verdict-copy">

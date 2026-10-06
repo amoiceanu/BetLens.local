@@ -1,6 +1,10 @@
 @extends('layouts.app')
 @section('title','Biletele mele')
 @section('content')
+@php
+    $sortUrl=fn($column)=>route('tickets',['sort'=>$column,'direction'=>$sort===$column&&$direction==='asc'?'desc':'asc']);
+    $sortDirection=fn($column)=>$sort===$column?$direction:null;
+@endphp
 <div class="page-head">
     <div>
         <p class="eyebrow">Arhivă personală</p>
@@ -10,18 +14,25 @@
     <a class="btn" href="{{ route('dashboard') }}"><i data-lucide="plus" size="17"></i>Bilet nou</a>
 </div>
 
-<section class="card">
+<section class="card ticket-list-card"><div class="ticket-list-table-wrap">
     <table>
-        <tr><th>Referință</th><th>Creat</th><th>Profil</th><th>Selecții</th><th>Cotă</th><th>Prob. combinată</th><th>Status</th><th></th></tr>
+        <tr>
+            @foreach(['reference'=>'Referință','created_at'=>'Creat','first_match_at'=>'Primul meci','last_match_at'=>'Ultimul meci','risk_profile'=>'Profil','selections'=>'Selecții','total_odds'=>'Cotă','combined_probability'=>'Prob. combinată','status'=>'Status'] as $column=>$label)
+                <th><a class="ticket-sort {{ $sort===$column?'active':'' }}" href="{{ $sortUrl($column) }}">{{ $label }}<i data-lucide="{{ $sortDirection($column)==='asc'?'arrow-up':($sortDirection($column)==='desc'?'arrow-down':'arrow-up-down') }}" size="12"></i></a></th>
+            @endforeach
+            <th></th>
+        </tr>
         @forelse($tickets as $ticket)
             <tr>
                 <td><b>{{ $ticket->reference }}</b></td>
                 <td>{{ $ticket->created_at->format('d.m.Y') }}</td>
+                <td class="ticket-match-date">{{ $ticket->effective_first_match_at?->format('d.m.Y H:i') ?? '—' }}</td>
+                <td class="ticket-match-date">{{ $ticket->effective_last_match_at?->format('d.m.Y H:i') ?? '—' }}</td>
                 <td>{{ ucfirst($ticket->risk_profile) }}</td>
                 <td>{{ $ticket->selections->count() }}</td>
                 <td>{{ number_format($ticket->total_odds,2) }}</td>
                 <td>{{ number_format($ticket->combined_probability*100,2) }}%</td>
-                <td><span class="status {{ $ticket->status }}">{{ ['pending'=>'În așteptare','placed_winbet'=>'Plasat pe Winbet','won'=>'Câștigat','lost'=>'Pierdut','void'=>'Anulat'][$ticket->status] }}</span></td>
+                <td><span class="status {{ $ticket->status }}">{{ $ticket->status_label }}</span></td>
                 <td>
                     <div class="ticket-list-actions">
                         <a class="btn secondary small" href="{{ route('tickets.show',$ticket) }}">Deschide</a>
@@ -35,8 +46,8 @@
                 </td>
             </tr>
         @empty
-            <tr><td colspan="8" class="empty">Nu ai generat încă niciun bilet.</td></tr>
+            <tr><td colspan="10" class="empty">Nu ai generat încă niciun bilet.</td></tr>
         @endforelse
-    </table>
+    </table></div>
 </section>
 @endsection

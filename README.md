@@ -25,13 +25,26 @@ Copiază valoarea generată în `.env` la `BETLENS_ADMIN_PASSWORD_HASH`. Parola 
 
 ## Surse reale
 
-Registrul include football-data.org, API-Football, The Odds API, OpenLigaDB și Understat. Sursele protejate necesită în `.env`:
+Registrul include football-data.org, API-Football, Football-Data.co.uk, The Odds API, OpenLigaDB, StatsBomb Open Data, Understat, Sportmonks Football API și Open-Meteo. Sursele protejate necesită în `.env`:
 
 ```env
 FOOTBALL_DATA_API_KEY=
 API_FOOTBALL_KEY=
 ODDS_API_KEY=
+SPORTMONKS_API_TOKEN=
 ```
+
+Sportmonks este o sursă secundară pentru statistici avansate, line-up-uri, accidentări, suspendări și xG/xGA. Disponibilitatea fiecărui tip de date depinde de ligă și de plan; lipsa datelor este raportată ca „Indisponibil”, niciodată ca zero. Open-Meteo nu necesită cheie și folosește coordonatele stadionului sau ale orașului echipei gazdă.
+
+Prioritatea surselor este:
+
+1. API-Football pentru identitatea meciului, echipe, competiție, start și rezultat.
+2. The Odds API pentru cote.
+3. Sportmonks pentru date avansate, fără suprascrierea sursei principale.
+4. Understat pentru xG/xGA în ligile unde există acoperire.
+5. Open-Meteo pentru context meteo cu pondere mică în analiză.
+
+Asocierea între furnizori folosește echipele, competiția și ora de start cu toleranță de maximum 15 minute. Conflictele sunt înregistrate în `data_sync_logs`, iar meciurile afectate sunt excluse din recomandări.
 
 Butonul **Verifică acum** testează sursa și importă automat răspunsul în `source_records`. Fiecare înregistrare are identificator extern și checksum: la următoarele sincronizări este clasificată drept nouă, actualizată sau neschimbată, fără duplicate. Rezultatul fiecărei rulări este salvat și în `data_sync_logs`. Nicio selecție nu este inventată când sursele nu furnizează suficiente date.
 
@@ -41,6 +54,8 @@ Butonul **Verifică acum** testează sursa și importă automat răspunsul în `
 php artisan queue:work
 php artisan schedule:work
 ```
+
+Schedulerul sincronizează fixtures Sportmonks orar, statisticile la șase ore, absențele zilnic și validează conflictele orar. Open-Meteo este actualizat zilnic pentru meciurile viitoare și la fiecare trei ore în ultimele 24 de ore înainte de start.
 
 ## Teste
 

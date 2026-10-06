@@ -30,11 +30,20 @@
                     @csrf @method('PATCH')
                     <select class="field ticket-status-field" name="status" onchange="this.form.submit()" aria-label="Status bilet">
                         <option value="pending" @selected($ticket->status==='pending')>În așteptare</option>
-                        <option value="placed_winbet" @selected($ticket->status==='placed_winbet')>Plasat pe Winbet</option>
+                        @foreach($operators as $operator)<option value="placed:{{ $operator->id }}" @selected($ticket->status==='placed' && $ticket->operator_id===$operator->id)>Plasat pe {{ $operator->name }}</option>@endforeach
                         <option value="won" @selected($ticket->status==='won')>Câștigat</option>
                         <option value="lost" @selected($ticket->status==='lost')>Pierdut</option>
                         <option value="void" @selected($ticket->status==='void')>Anulat</option>
                     </select>
+                </form>
+                <form class="ticket-match-window-form" method="post" action="{{ route('tickets.update',$ticket) }}">
+                    @csrf @method('PATCH')
+                    <label>Intervalul meciurilor</label>
+                    <div class="ticket-match-window-fields">
+                        <input class="field" type="datetime-local" name="first_match_at" value="{{ old('first_match_at',$ticket->effective_first_match_at?->format('Y-m-d\TH:i')) }}" aria-label="Primul meci">
+                        <input class="field" type="datetime-local" name="last_match_at" value="{{ old('last_match_at',$ticket->effective_last_match_at?->format('Y-m-d\TH:i')) }}" aria-label="Ultimul meci">
+                        <button class="btn secondary" type="submit" aria-label="Salvează intervalul meciurilor" title="Salvează intervalul"><i data-lucide="check" size="15"></i></button>
+                    </div>
                 </form>
             </div>
             <div class="ticket-summary-metric">

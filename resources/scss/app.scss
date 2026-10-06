@@ -2,6 +2,7 @@
 @use 'sources';
 @use 'modal';
 @use 'match-analysis';
+@use 'operators';
 
 .real-data-pill{color:var(--green);border-color:#3ee68b44;background:#3ee68b0d}
 .league-logo{--accent:var(--green)}
@@ -24,3 +25,28 @@
 .btn-block{width:100%}
 .login-hint{margin-bottom:0;font-size:11px}
 .admin-head-actions{display:flex;align-items:center;gap:8px}.admin-head-actions form{display:flex;margin:0}
+.status.placed{background:#64a8ff1a;color:var(--blue)}
+
+/* Light theme */
+:root{--bg:#f4f7fb;--surface:#fff;--surface2:#f7fafc;--line:#d8e2ea;--text:#17212b;--muted:#637789;--green:#128a57;--lime:#65a30d;--amber:#b77908;--red:#dc4054;--blue:#3277c8}
+html{background:var(--bg);color-scheme:light}
+body{background:radial-gradient(circle at 8% -8%,#d9f5e7 0,transparent 34rem),radial-gradient(circle at 96% 0,#dcecff 0,transparent 31rem),var(--bg)}
+.header{background:#ffffffeb;border-bottom-color:#dce5ec;box-shadow:0 4px 20px #2032410a}
+.brand-mark{background:#23c979;color:#fff}.navlinks a:hover,.navlinks a.active{color:var(--text);background:#eaf1f5}.mobile-toggle{color:var(--text)}
+.demo-pill,.pill{background:#fff8e7;border-color:#e9c979;color:#8d6109}.real-data-pill{color:var(--green);border-color:#9bd9b9;background:#edf9f2}
+.league-card,.risk-card,.card{border-color:var(--line);background:linear-gradient(145deg,#fff,#f8fbfd);box-shadow:0 8px 28px #24445d0b}
+.league-card:hover,.choice input:checked+.league-card{border-color:var(--green);background:#eef9f3;box-shadow:0 0 0 3px #128a5714}.choice input:checked+.risk-card{border-color:var(--green);box-shadow:inset 0 0 0 1px var(--green),0 10px 32px #23425610}
+.stat-mini,.metric{background:#fff;border-color:var(--line)}
+.match-card{background:#fff;border-color:var(--line);box-shadow:0 8px 24px #24445d0a}
+.field{background:#fff;border-color:#cddae4;color:var(--text);box-shadow:inset 0 1px 2px #1f3b4d08}.field option{background:#fff}.field:focus{border-color:var(--green);box-shadow:0 0 0 3px #128a5714}
+.btn{background:#23c979;color:#07311f}.btn.secondary{background:#f3f7fa;color:var(--text);border-color:#ccd9e2}.btn.danger{background:#fff1f3;color:var(--red);border-color:#efabb5}
+.notice{background:#fff8e9;border-color:#ead49c;color:#7c631f}.flash{background:#eaf9f1;border-color:#8bd5ad;color:#176e49}.flash.warning,.errors{background:#fff7e6;border-color:#e5c878;color:#83610e}
+.footer{border-top-color:#dce5ec;background:#ffffff70}
+table tbody tr:hover{background:#f7fafc}th,td{border-bottom-color:var(--line)}
+.source-counts span{background:#fff}.source-table th{background:#eef3f6;border-bottom-color:#d1dde6}.source-table tbody tr:hover{background:#f7fafc}.source-mini-icon{background:#eaf8f1;border-color:#b6e3ca}.source-last-check.is-stale{background:linear-gradient(90deg,#fff4d7,transparent)}
+.source-result{color:#435867}
+@media(max-width:700px){.source-table tr{background:linear-gradient(145deg,#fff,#f7fafc)!important;border-color:var(--line)!important}.source-table td{border-bottom-color:#dfe7ed!important}}
+.verify-backdrop{background:#25374680}.verify-dialog{border-color:#cbd9e3;background:linear-gradient(145deg,#fff,#f6f9fb);box-shadow:0 28px 90px #263d4f33}.verify-close{background:#f2f6f8}.verify-close:hover{background:#e7eef3}.verify-grid>div{background:#f5f8fa}.verify-message{background:#f1f5f7;color:#526675}.verify-info{background:#edf5ff;color:#476d96}
+.bet-verdict{border-color:#8ed2af;background:linear-gradient(135deg,#eefaf4,#fff 58%,#f2f8fc);box-shadow:0 18px 50px #24445d12}.bet-verdict.caution{border-color:#e2c170;background:linear-gradient(135deg,#fff7df,#fff)}.verdict-meaning{color:#405a4b}.verdict-odds{background:#fff;border-color:#a7dabc}.verdict-metrics{border-top-color:#cfe1d7}.verdict-metrics div{background:#fff}.match-ticket-back{background:#fff}.reason-list li{background:#f4f8fa;color:#435867}
+.ticket-summary-metric,.weather-metrics div{background:#f5f8fa}.ticket-responsible-row{background:#fff9e8;color:#765f22}.ticket-selection-card{background:linear-gradient(145deg,#fff,#f7fafc)}
+.operator-site{background:#eef9f3}.status.void{background:#edf2f5;color:var(--muted)}

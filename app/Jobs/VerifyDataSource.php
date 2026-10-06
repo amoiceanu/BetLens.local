@@ -5,6 +5,9 @@ use App\Models\SourceRecord;
 use App\Services\OpenLigaDataImporter;
 use App\Services\OddsImportService;
 use App\Services\MatchAnalysisService;
+use App\Services\Providers\OpenMeteoProvider;
+use App\Services\Providers\SportmonksProvider;
+use App\Services\SourcePayloadStoreService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Http\Client\Response;
@@ -21,8 +24,10 @@ class VerifyDataSource implements ShouldQueue
     {
         $source=DataSource::findOrFail($this->sourceId); $started=microtime(true); $source->update(['status'=>'checking']);
         try {
-            $key=$source->slug==='the-odds-api' ? config('services.odds_api.key') : ($source->credential_env ? env($source->credential_env) : null);
+            $key=$source->credentialValue();
             if($source->credential_env && blank($key)){$this->finish($source,'not_configured',0,"Lipsește {$source->credential_env} din fișierul .env.",$started,['database'=>$source->records()->count(),'errors'=>1]);return;}
+            if($source->slug==='sportmonks'){$result=app(SportmonksProvider::class)->verifyConnection();$metrics=app(SourcePayloadStoreService::class)->store($source,'sportmonks_league',$result['records']);$source->update(['metadata'=>array_merge($source->metadata??[],['superliga_coverage'=>$result['coverage']])]);$this->finish($source,'healthy',count($result['records']),$result['message'],$started,$metrics);return;}
+            if($source->slug==='open-meteo'){$result=app(OpenMeteoProvider::class)->verifyConnection();$metrics=app(SourcePayloadStoreService::class)->store($source,'provider_status',$result['records']);$this->finish($source,'healthy',count($result['records']),$result['message'],$started,$metrics);return;}
             $request=Http::acceptJson()->timeout(20)->retry(2,250,throw:false);
             if($source->slug==='football-data') $request=$request->withHeader('X-Auth-Token',$key);
             if($source->slug==='api-football') $request=$request->withHeader('x-apisports-key',$key);
@@ -77,7 +82,7 @@ class VerifyDataSource implements ShouldQueue
         foreach(['id','leagueId','sport_key','key','code','external_id','name'] as $key) if(isset($record[$key])&&is_scalar($record[$key])) return substr($key.':'.(string)$record[$key],0,191);
         return 'hash:'.hash('sha256',json_encode($record)).':'.$index;
     }
-    private function recordType(DataSource $source): string { return match($source->slug){'openligadb','football-data'=>'competition','statsbomb-open-data'=>'competition_season','football-data-uk'=>'historical_match','the-odds-api'=>'sport','api-football'=>'api_status','understat'=>'page_snapshot',default=>'external_record'}; }
+    private function recordType(DataSource $source): string { return match($source->slug){'openligadb','football-data'=>'competition','statsbomb-open-data'=>'competition_season','football-data-uk'=>'historical_match','the-odds-api'=>'sport','api-football'=>'api_status','understat'=>'page_snapshot','sportmonks'=>'sportmonks_league','open-meteo'=>'provider_status',default=>'external_record'}; }
     private function normalize(array $value): array { foreach($value as &$item) if(is_array($item))$item=$this->normalize($item);unset($item);if(!array_is_list($value))ksort($value);return $value; }
     private function finish(DataSource $source,string $status,int $records,string $message,float $started,array $metrics=[]): void
     {

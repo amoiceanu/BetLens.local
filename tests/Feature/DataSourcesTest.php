@@ -12,8 +12,49 @@ class DataSourcesTest extends TestCase
             ->assertOk()
             ->assertSee('Sursa datelor')
             ->assertSee('football-data.org')
+            ->assertSee('Sportmonks Football API')
+            ->assertSee('Open-Meteo API')
             ->assertSee('Verifică acum')
             ->assertSeeInOrder(['API-Football','Football-Data.co.uk','football-data.org','OpenLigaDB','StatsBomb Open Data','The Odds API','Understat']);
+    }
+    public function test_verification_action_is_hidden_for_an_unconfigured_source(): void
+    {
+        config(['services.api_football.key'=>null]);
+        $source=\App\Models\DataSource::where('slug','api-football')->firstOrFail();
+
+        $this->get('/surse-date')
+            ->assertOk()
+            ->assertDontSee(route('data-sources.verify',$source),false)
+            ->assertSee('Necesită configurare');
+    }
+    public function test_verification_action_is_visible_when_the_source_is_configured(): void
+    {
+        config(['services.api_football.key'=>'test-key']);
+        $source=\App\Models\DataSource::where('slug','api-football')->firstOrFail();
+
+        $this->get('/surse-date')
+            ->assertOk()
+            ->assertSee(route('data-sources.verify',$source),false);
+    }
+    public function test_the_table_shows_the_number_of_imported_records_for_each_source(): void
+    {
+        $source=\App\Models\DataSource::where('slug','openligadb')->firstOrFail();
+        $source->records()->create(['external_key'=>'competition:test','record_type'=>'competition','payload'=>['name'=>'Test'],'checksum'=>hash('sha256','test'),'first_seen_at'=>now(),'last_seen_at'=>now()]);
+
+        $this->get('/surse-date')
+            ->assertOk()
+            ->assertSee('Date importate')
+            ->assertSee('1')
+            ->assertSee('înregistrări în MySQL');
+    }
+    public function test_an_outdated_last_check_is_highlighted(): void
+    {
+        $source=\App\Models\DataSource::where('slug','openligadb')->firstOrFail();
+        $source->update(['last_checked_at'=>now()->subDay(),'last_duration_ms'=>100]);
+
+        $this->get('/surse-date')
+            ->assertOk()
+            ->assertSee('source-last-check is-stale',false);
     }
     public function test_a_real_public_source_can_be_verified_immediately(): void
     {
