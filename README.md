@@ -15,13 +15,13 @@ php artisan migrate --seed
 
 În instalarea XAMPP curentă aplicația este disponibilă la `http://127.0.0.1/php-sites/BetLens.local/public/`.
 
-Autentificarea admin nu are parolă implicită. Generează un hash pentru o parolă de minimum 12 caractere cu:
+Autentificarea admin folosește conturi din tabela `users`, cu parole hash-uite. Creează sau actualizează un administrator cu:
 
 ```bash
-php artisan betlens:admin-password
+php artisan betlens:admin-user
 ```
 
-Copiază valoarea generată în `.env` la `BETLENS_ADMIN_PASSWORD_HASH`. Parola propriu-zisă nu este salvată în configurație.
+Comanda solicită utilizatorul, emailul și parola în mod interactiv; parola nu este salvată în configurație sau în repository.
 
 ## Surse reale
 

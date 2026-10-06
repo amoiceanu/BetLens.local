@@ -54,10 +54,6 @@ return [
         'store_payloads' => env('OPEN_METEO_STORE_PAYLOADS', true),
     ],
 
-    'betlens' => [
-        'admin_password_hash' => env('BETLENS_ADMIN_PASSWORD_HASH'),
-    ],
-
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),

@@ -13,6 +13,7 @@ use App\Models\Market;
 use App\Models\Odd;
 use App\Models\Operator;
 use App\Models\Recommendation;
+use App\Models\User;
 use App\Services\FootballStatsService;
 use App\Services\MatchDataService;
 use App\Services\TicketBuilderService;
@@ -165,15 +166,14 @@ class BetLensController extends Controller
         return back()->with($source->status==='healthy'?'success':'warning',$message)->with('verification_result',$result);
     }
 
-    public function adminLogin(Request $request){return $request->session()->get('betlens_admin')===true?redirect()->route('admin'):view('admin.login');}
+    public function adminLogin(Request $request){$userId=$request->session()->get('admin_user_id');return $userId&&User::whereKey($userId)->where('is_admin',true)->exists()?redirect()->route('admin'):view('admin.login');}
     public function adminAuthenticate(Request $request)
     {
-        $data=$request->validate(['password'=>'required|string|max:255']);
-        $hash=(string)config('services.betlens.admin_password_hash');
-        abort_if($hash==='',503,'Autentificarea de administrator nu este configurată.');
-        if(!Hash::check($data['password'],$hash)) return back()->withErrors(['password'=>'Date de autentificare incorecte.']);
+        $data=$request->validate(['username'=>'required|string|max:100','password'=>'required|string|max:255']);
+        $user=User::where('is_admin',true)->where(fn($query)=>$query->where('username',$data['username'])->orWhere('email',$data['username']))->first();
+        if(!$user||!Hash::check($data['password'],$user->password)) return back()->withErrors(['username'=>'Date de autentificare incorecte.'])->onlyInput('username');
         $request->session()->regenerate();
-        $request->session()->put('betlens_admin',true);
+        $request->session()->put('admin_user_id',$user->id);
         return redirect()->intended(route('admin'));
     }
     public function adminLogout(Request $request)
