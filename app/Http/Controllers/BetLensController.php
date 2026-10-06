@@ -152,10 +152,11 @@ class BetLensController extends Controller
     public function adminLogin(Request $request){return $request->session()->get('betlens_admin')===true?redirect()->route('admin'):view('admin.login');}
     public function adminAuthenticate(Request $request)
     {
-        $data=$request->validate(['password'=>'required|string|max:255']);
+        $data=$request->validate(['username'=>'required|string|max:255','password'=>'required|string|max:255']);
         $hash=(string)config('services.betlens.admin_password_hash');
         abort_if($hash==='',503,'Autentificarea de administrator nu este configurată.');
-        if(!Hash::check($data['password'],$hash)) return back()->withErrors(['password'=>'Date de autentificare incorecte.']);
+        $validPassword=Hash::check($data['password'],$hash);
+        if(!hash_equals((string)config('services.betlens.admin_username','admin'),trim($data['username'])) || !$validPassword) return back()->withErrors(['password'=>'Date de autentificare incorecte.'])->onlyInput('username');
         $request->session()->regenerate();
         $request->session()->put('betlens_admin',true);
         return redirect()->intended(route('admin'));
