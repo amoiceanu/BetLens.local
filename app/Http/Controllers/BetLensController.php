@@ -111,10 +111,12 @@ class BetLensController extends Controller
             'reference.max'=>'Referința poate avea maximum 100 de caractere.',
             'last_match_at.after_or_equal'=>'Ultimul meci nu poate fi înaintea primului meci.',
         ]);
+        $submittedSections=(int)isset($data['status'])+(int)isset($data['reference'])+(int)(array_key_exists('first_match_at',$data)||array_key_exists('last_match_at',$data));
         if(isset($data['status'])&&str_starts_with($data['status'],'placed:')){$data['operator_id']=(int)str($data['status'])->after('placed:')->toString();$data['status']='placed';}
+        elseif(isset($data['status']))$data['operator_id']=null;
         abort_if($data===[],422);
         $ticket->update($data);
-        $message=isset($data['reference'])?'Referința biletului a fost actualizată.':(array_key_exists('first_match_at',$data)||array_key_exists('last_match_at',$data)?'Intervalul meciurilor a fost actualizat.':'Status actualizat.');
+        $message=$submittedSections>1?'Detaliile biletului au fost actualizate.':(isset($data['reference'])?'Referința biletului a fost actualizată.':(array_key_exists('first_match_at',$data)||array_key_exists('last_match_at',$data)?'Intervalul meciurilor a fost actualizat.':'Status actualizat.'));
         return back()->with('success',$message);
     }
 

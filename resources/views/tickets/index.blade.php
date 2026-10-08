@@ -15,25 +15,25 @@
 </div>
 
 <section class="card ticket-list-card"><div class="ticket-list-table-wrap">
-    <table>
-        <tr>
+    <table class="ticket-history-table">
+        <thead><tr>
             @foreach(['reference'=>'Referință','created_at'=>'Creat','first_match_at'=>'Primul meci','last_match_at'=>'Ultimul meci','risk_profile'=>'Profil','selections'=>'Selecții','total_odds'=>'Cotă','combined_probability'=>'Prob. combinată','status'=>'Status'] as $column=>$label)
                 <th><a class="ticket-sort {{ $sort===$column?'active':'' }}" href="{{ $sortUrl($column) }}">{{ $label }}<i data-lucide="{{ $sortDirection($column)==='asc'?'arrow-up':($sortDirection($column)==='desc'?'arrow-down':'arrow-up-down') }}" size="12"></i></a></th>
             @endforeach
-            <th></th>
-        </tr>
-        @forelse($tickets as $ticket)
+            <th><span class="visually-hidden">Acțiuni</span></th>
+        </tr></thead>
+        <tbody>@forelse($tickets as $ticket)
             <tr>
-                <td><b>{{ $ticket->reference }}</b></td>
-                <td>{{ $ticket->created_at->format('d.m.Y') }}</td>
-                <td class="ticket-match-date">{{ $ticket->effective_first_match_at?->format('d.m.Y H:i') ?? '—' }}</td>
-                <td class="ticket-match-date">{{ $ticket->effective_last_match_at?->format('d.m.Y H:i') ?? '—' }}</td>
-                <td>{{ ucfirst($ticket->risk_profile) }}</td>
-                <td>{{ $ticket->selections->count() }}</td>
-                <td>{{ number_format($ticket->total_odds,2) }}</td>
-                <td>{{ number_format($ticket->combined_probability*100,2) }}%</td>
-                <td><span class="status {{ $ticket->status }}">{{ $ticket->status_label }}</span></td>
-                <td>
+                <td data-label="Referință"><b>{{ $ticket->reference }}</b></td>
+                <td data-label="Creat">{{ $ticket->created_at->format('d.m.Y') }}</td>
+                <td data-label="Primul meci" class="ticket-match-date">{{ $ticket->effective_first_match_at?->format('d.m.Y H:i') ?? '—' }}</td>
+                <td data-label="Ultimul meci" class="ticket-match-date">{{ $ticket->effective_last_match_at?->format('d.m.Y H:i') ?? '—' }}</td>
+                <td data-label="Profil">{{ ucfirst($ticket->risk_profile) }}</td>
+                <td data-label="Selecții">{{ $ticket->selections->count() }}</td>
+                <td data-label="Cotă">{{ number_format($ticket->total_odds,2) }}</td>
+                <td data-label="Prob. combinată">{{ number_format($ticket->combined_probability*100,2) }}%</td>
+                <td data-label="Status"><span class="status {{ $ticket->status }}">{{ $ticket->status_label }}</span></td>
+                <td class="ticket-actions-cell">
                     <div class="ticket-list-actions">
                         <a class="btn secondary small" href="{{ route('tickets.show',$ticket) }}">Deschide</a>
                         <form method="post" action="{{ route('tickets.destroy',$ticket) }}" data-confirm="Ștergi definitiv biletul {{ $ticket->reference }}?" onsubmit="return confirm(this.dataset.confirm)">
@@ -47,7 +47,7 @@
             </tr>
         @empty
             <tr><td colspan="10" class="empty">Nu ai generat încă niciun bilet.</td></tr>
-        @endforelse
+        @endforelse</tbody>
     </table></div>
 </section>
 @endsection

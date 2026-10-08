@@ -3,73 +3,64 @@
 @section('content')
 @php($modelOnly=$ticket->selections->contains(fn($s)=>$s->recommendation->model_version==='poisson-fair-v1'))
 
-<div class="ticket-detail-page" x-data="{copied:false}">
-    <div class="page-head">
-        <div>
-            <p class="eyebrow">Bilet generat · {{ ucfirst($ticket->risk_profile) }}</p>
-            <h1>{{ $ticket->reference }}</h1>
-            <p>{{ $ticket->created_at->format('d M Y, H:i') }} · Date din surse externe</p>
+<div class="ticket-detail-page">
+    <div class="page-head ticket-detail-head">
+        <div class="ticket-title-block">
+            <nav class="ticket-breadcrumb" aria-label="Navigare secundară">
+                <a href="{{ route('tickets') }}">Istoric</a><span aria-hidden="true">/</span><span aria-current="page">Detalii bilet</span>
+            </nav>
+            <div class="ticket-title-row">
+                <h1>Rezumat bilet</h1>
+                <span class="ticket-risk-badge">{{ ucfirst($ticket->risk_profile) }}</span>
+            </div>
+            <p class="ticket-title-meta"><span title="{{ $ticket->reference }}">{{ $ticket->reference }}</span><span aria-hidden="true">·</span><time datetime="{{ $ticket->created_at->toIso8601String() }}">Creat la {{ $ticket->created_at->format('d M Y, H:i') }}</time></p>
         </div>
-        <a href="{{ route('tickets') }}" class="btn secondary">Înapoi la istoric</a>
+        <a href="{{ route('tickets') }}" class="btn secondary ticket-history-button"><i data-lucide="arrow-left" size="16"></i>Înapoi la istoric</a>
     </div>
 
     <section class="card ticket-summary-card">
-        <div class="ticket-summary-main">
-            <div class="ticket-summary-heading">
-                <p class="eyebrow">Biletul meu</p>
-                <h2>Rezumat bilet</h2>
-                <form class="ticket-reference-form" method="post" action="{{ route('tickets.update',$ticket) }}">
-                    @csrf @method('PATCH')
-                    <label for="ticket-reference">Referința mea / Winbet</label>
-                    <div class="ticket-reference-control">
-                        <input id="ticket-reference" class="field" name="reference" value="{{ old('reference',$ticket->reference) }}" maxlength="100" required>
-                        <button class="btn secondary" type="submit" aria-label="Salvează referința" title="Salvează referința"><i data-lucide="check" size="15"></i></button>
-                    </div>
-                </form>
-                <form class="ticket-status-form" method="post" action="{{ route('tickets.update',$ticket) }}">
-                    @csrf @method('PATCH')
-                    <select class="field ticket-status-field" name="status" onchange="this.form.submit()" aria-label="Status bilet">
-                        <option value="pending" @selected($ticket->status==='pending')>În așteptare</option>
-                        @foreach($operators as $operator)<option value="placed:{{ $operator->id }}" @selected($ticket->status==='placed' && $ticket->operator_id===$operator->id)>Plasat pe {{ $operator->name }}</option>@endforeach
-                        <option value="won" @selected($ticket->status==='won')>Câștigat</option>
-                        <option value="lost" @selected($ticket->status==='lost')>Pierdut</option>
-                        <option value="void" @selected($ticket->status==='void')>Anulat</option>
-                    </select>
-                </form>
-                <form class="ticket-match-window-form" method="post" action="{{ route('tickets.update',$ticket) }}">
-                    @csrf @method('PATCH')
-                    <label>Intervalul meciurilor</label>
-                    <div class="ticket-match-window-fields">
-                        <input class="field" type="datetime-local" name="first_match_at" value="{{ old('first_match_at',$ticket->effective_first_match_at?->format('Y-m-d\TH:i')) }}" aria-label="Primul meci">
-                        <input class="field" type="datetime-local" name="last_match_at" value="{{ old('last_match_at',$ticket->effective_last_match_at?->format('Y-m-d\TH:i')) }}" aria-label="Ultimul meci">
-                        <button class="btn secondary" type="submit" aria-label="Salvează intervalul meciurilor" title="Salvează intervalul"><i data-lucide="check" size="15"></i></button>
-                    </div>
-                </form>
+            <div class="ticket-summary-metric">
+                <span class="ticket-metric-icon"><i data-lucide="trending-up" size="18"></i></span>
+                <span class="ticket-metric-copy"><span>{{ $modelOnly?'Cotă echitabilă totală':'Cotă totală' }}</span><b>{{ number_format($ticket->total_odds,2,',','.') }}</b></span>
             </div>
             <div class="ticket-summary-metric">
-                <span>{{ $modelOnly?'Cotă echitabilă totală':'Cotă totală' }}</span>
-                <b>{{ number_format($ticket->total_odds,2,',','.') }}</b>
+                <span class="ticket-metric-icon"><i data-lucide="percent" size="18"></i></span>
+                <span class="ticket-metric-copy"><span>Probabilitate combinată</span><b>{{ number_format($ticket->combined_probability*100,2,',','.') }}%</b></span>
             </div>
             <div class="ticket-summary-metric">
-                <span>Probabilitate combinată</span>
-                <b>{{ number_format($ticket->combined_probability*100,2,',','.') }}%</b>
+                <span class="ticket-metric-icon"><i data-lucide="list-checks" size="18"></i></span>
+                <span class="ticket-metric-copy"><span>Selecții</span><b>{{ $ticket->selections->count() }}</b></span>
             </div>
-            <div class="ticket-summary-metric">
-                <span>Număr selecții</span>
-                <b>{{ $ticket->selections->count() }}</b>
+        <form class="ticket-summary-controls" method="post" action="{{ route('tickets.update',$ticket) }}">
+            @csrf @method('PATCH')
+            <div class="ticket-reference-form ticket-summary-control">
+                <label for="ticket-reference">Referință bilet</label>
+                <input id="ticket-reference" class="field" name="reference" value="{{ old('reference',$ticket->reference) }}" maxlength="100" required autocomplete="off">
             </div>
-            <button class="btn ticket-copy-button" type="button" @click="navigator.clipboard.writeText(document.querySelector('#ticketText').value);copied=true">
-                <i data-lucide="copy" size="17"></i><span x-text="copied?'Copiat!':'Copiază selecțiile'">Copiază selecțiile</span>
-            </button>
-        </div>
-        <div class="ticket-responsible-row">
-            <i data-lucide="shield-alert" size="17"></i>
-            <span>@if($modelOnly)Cotele sunt estimări BetLens calculate din rezultate reale, nu oferte ale unui bookmaker. @endif Riscul este {{ $ticket->risk_profile==='conservator'?'moderat':($ticket->risk_profile==='echilibrat'?'ridicat':'foarte ridicat') }}. Rezultatul nu este garantat. Joacă responsabil.</span>
-        </div>
-        <textarea id="ticketText" hidden>@foreach($ticket->selections as $s){{ $s->recommendation->match->league->name }}
-{{ $s->recommendation->match->homeTeam->name }} – {{ $s->recommendation->match->awayTeam->name }} | {{ $s->recommendation->selection }} | cotă {{ number_format($s->recommendation->odds,2) }}
-@endforeach Cotă totală: {{ number_format($ticket->total_odds,2) }}</textarea>
+            <div class="ticket-status-form ticket-summary-control">
+                <label for="ticket-status">Status</label>
+                <select id="ticket-status" class="field ticket-status-field" name="status">
+                    <option value="pending" @selected($ticket->status==='pending')>În așteptare</option>
+                    @foreach($operators as $operator)<option value="placed:{{ $operator->id }}" @selected($ticket->status==='placed' && $ticket->operator_id===$operator->id)>Plasat pe {{ $operator->name }}</option>@endforeach
+                    <option value="won" @selected($ticket->status==='won')>Câștigat</option>
+                    <option value="lost" @selected($ticket->status==='lost')>Pierdut</option>
+                    <option value="void" @selected($ticket->status==='void')>Anulat</option>
+                </select>
+            </div>
+            <div class="ticket-match-window-form ticket-summary-control">
+                <span class="ticket-control-label" id="match-window-label">Intervalul meciurilor</span>
+                <div class="ticket-match-window-fields" aria-labelledby="match-window-label">
+                    <input class="field" type="datetime-local" name="first_match_at" value="{{ old('first_match_at',$ticket->effective_first_match_at?->format('Y-m-d\TH:i')) }}" aria-label="Primul meci">
+                    <input class="field" type="datetime-local" name="last_match_at" value="{{ old('last_match_at',$ticket->effective_last_match_at?->format('Y-m-d\TH:i')) }}" aria-label="Ultimul meci">
+                </div>
+            </div>
+            <button class="btn ticket-save-button" type="submit"><i data-lucide="save" size="17"></i>Salvează</button>
+        </form>
     </section>
+    <aside class="ticket-responsible-row" aria-label="Avertisment joc responsabil">
+        <i data-lucide="shield-alert" size="17"></i>
+        <span>@if($modelOnly)Cotele sunt estimări BetLens calculate din rezultate reale, nu oferte ale unui bookmaker. @endif Riscul este {{ $ticket->risk_profile==='conservator'?'moderat':($ticket->risk_profile==='echilibrat'?'ridicat':'foarte ridicat') }}. Rezultatul nu este garantat. Joacă responsabil.</span>
+    </aside>
 
     <div class="ticket-selection-grid">
         @foreach($ticket->selections as $selection)

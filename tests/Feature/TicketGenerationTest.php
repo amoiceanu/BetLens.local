@@ -96,6 +96,33 @@ class TicketGenerationTest extends TestCase
         $this->get(route('tickets'))->assertOk()->assertSee('10.10.2026 18:30')->assertSee('11.10.2026 21:45');
     }
 
+    public function test_ticket_details_are_saved_together_from_one_form(): void
+    {
+        $ticket=GeneratedTicket::create(['reference'=>'BL-ONEFORM','risk_profile'=>'conservator','total_odds'=>1.5,'combined_probability'=>0.66,'status'=>'pending']);
+        $operator=Operator::where('slug','winbet')->firstOrFail();
+
+        $this->get(route('tickets.show',$ticket))
+            ->assertOk()
+            ->assertSee('Salvează')
+            ->assertDontSee('Copiază selecțiile');
+
+        $this->patch(route('tickets.update',$ticket),[
+            'reference'=>'PERSONAL-ONEFORM',
+            'status'=>'placed:'.$operator->id,
+            'first_match_at'=>'2026-10-12 18:00',
+            'last_match_at'=>'2026-10-13 21:00',
+        ])->assertRedirect()->assertSessionHas('success','Detaliile biletului au fost actualizate.');
+
+        $this->assertDatabaseHas('generated_tickets',[
+            'id'=>$ticket->id,
+            'reference'=>'PERSONAL-ONEFORM',
+            'status'=>'placed',
+            'operator_id'=>$operator->id,
+            'first_match_at'=>'2026-10-12 18:00:00',
+            'last_match_at'=>'2026-10-13 21:00:00',
+        ]);
+    }
+
     public function test_ticket_history_can_be_sorted_ascending_and_descending_from_the_grid(): void
     {
         foreach(['BL-ZULU','BL-ALFA'] as $reference)GeneratedTicket::create(['reference'=>$reference,'risk_profile'=>'conservator','total_odds'=>1.5,'combined_probability'=>0.66,'status'=>'pending']);
