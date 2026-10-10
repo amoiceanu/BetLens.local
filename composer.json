@@ -11,6 +11,7 @@
         "laravel/tinker": "^2.10.1"
     },
     "require-dev": {
+        "behat/behat": "^4.0",
         "fakerphp/faker": "^1.23",
         "laravel/pail": "^1.2.2",
         "laravel/pint": "^1.13",
@@ -32,6 +33,7 @@
         }
     },
     "scripts": {
+        "test:acceptance": "behat --no-colors",
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
             "@php artisan package:discover --ansi"

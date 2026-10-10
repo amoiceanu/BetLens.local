@@ -67,6 +67,9 @@ jobs:
       - name: Run full test suite with coverage
         run: vendor/bin/phpunit --coverage-text --coverage-clover build/logs/clover.xml
 
+      - name: Run Gherkin acceptance scenarios
+        run: composer run test:acceptance
+
       - name: Enforce 80% line coverage
         run: php scripts/check-coverage.php build/logs/clover.xml 80
 

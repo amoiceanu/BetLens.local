@@ -1,0 +1,7 @@
+default:
+  suites:
+    betlens:
+      paths:
+        - features
+      contexts:
+        - FeatureContext
