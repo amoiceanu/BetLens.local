@@ -15,8 +15,9 @@ class SourcePayloadStoreService
         return ['database'=>$source->records()->count(),'new'=>$new,'updated'=>$updated,'unchanged'=>$unchanged,'errors'=>0];
     }
 
-    public function log(string $provider,string $type,string $status,int $records,string $message,float $started): void
+    public function log(string $provider,string $type,string $status,int $records,string $message,float $started,array $metrics=[]): void
     {
         DB::table('data_sync_logs')->insert(['provider'=>$provider,'type'=>$type,'status'=>$status,'records'=>$records,'message'=>$message,'started_at'=>now()->subMilliseconds((int)((microtime(true)-$started)*1000)),'finished_at'=>now(),'created_at'=>now(),'updated_at'=>now()]);
+        app(ImportAuditService::class)->record($provider,$type,$status,$metrics,$message);
     }
 }

@@ -58,14 +58,27 @@ class DataSourcesTest extends TestCase
     }
     public function test_a_real_public_source_can_be_verified_immediately(): void
     {
-        Http::fake(['api.openligadb.de/*'=>Http::response([['leagueShortcut'=>'bl1']],200)]);
+        Http::fake(['api.openligadb.de/*'=>Http::response([['id'=>1,'leagueShortcut'=>'bl1']],200)]);
         $source=\App\Models\DataSource::where('slug','openligadb')->firstOrFail();
         $this->post("/surse-date/{$source->id}/verifica")->assertRedirect()->assertSessionHas('verification_result',fn($result)=>$result['detected']===1 && $result['new']===1 && $result['database']===1 && $result['status']==='healthy');
         $this->assertDatabaseHas('data_sources',['id'=>$source->id,'status'=>'healthy']);
         $this->assertDatabaseHas('source_records',['data_source_id'=>$source->id,'record_type'=>'competition']);
         $this->assertDatabaseHas('data_sync_logs',['provider'=>'openligadb','type'=>'source_sync','status'=>'healthy']);
+        $this->assertDatabaseHas('import_audits',['provider'=>'openligadb','import_type'=>'source_sync','status'=>'healthy','records_new'=>1,'records_updated'=>0,'records_deleted'=>0]);
         $this->post("/surse-date/{$source->id}/verifica")->assertSessionHas('verification_result',fn($result)=>$result['new']===0 && $result['unchanged']===1 && $result['database']===1);
         $this->assertDatabaseCount('source_records',1);
+        $this->assertDatabaseHas('import_audits',['provider'=>'openligadb','import_type'=>'source_sync','records_new'=>0,'records_updated'=>0,'records_deleted'=>0]);
+        $this->assertDatabaseCount('import_audits',2);
+    }
+    public function test_import_audit_records_updated_payloads(): void
+    {
+        $source=\App\Models\DataSource::where('slug','sportmonks')->firstOrFail();
+        $store=app(\App\Services\SourcePayloadStoreService::class);
+        $store->store($source,'test_fixture',[['id'=>123,'score'=>0]]);
+        $metrics=$store->store($source,'test_fixture',[['id'=>123,'score'=>1]]);
+        $store->log('sportmonks','test_fixture','healthy',1,'Test import',microtime(true),$metrics);
+
+        $this->assertDatabaseHas('import_audits',['provider'=>'sportmonks','import_type'=>'test_fixture','records_new'=>0,'records_updated'=>1,'records_deleted'=>0]);
     }
     public function test_statsbomb_open_data_imports_competition_seasons(): void
     {
