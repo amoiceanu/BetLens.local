@@ -11,9 +11,13 @@ use App\Models\DataSource;
 use App\Models\League;
 use App\Models\Market;
 use App\Models\Odd;
+use App\Models\Operator;
 use App\Models\Recommendation;
+use App\Models\User;
 use App\Services\FootballStatsService;
 use App\Services\MatchDataService;
+use App\Services\MatchUrlParser;
+use App\Services\TeamAliasMatcher;
 use App\Services\TicketBuilderService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -45,26 +49,49 @@ class BetLensController extends Controller
             return back()->withInput()->with('warning',$message);
         }
         $totals=$builder->totals($items);
-        $ticket=GeneratedTicket::create(['league_id'=>$leagueId,'reference'=>'BL-'.strtoupper(Str::random(8)),'risk_profile'=>$data['profile'],'total_odds'=>$totals['odds'],'combined_probability'=>$totals['probability']/100,'stake'=>$data['stake']??null,'status'=>'pending']);
+        $kickoffs=$items->pluck('match.kickoff_at')->filter()->sort()->values();
+        $ticket=GeneratedTicket::create(['league_id'=>$leagueId,'reference'=>'BL-'.strtoupper(Str::random(8)),'risk_profile'=>$data['profile'],'total_odds'=>$totals['odds'],'combined_probability'=>$totals['probability']/100,'stake'=>$data['stake']??null,'status'=>'pending','first_match_at'=>$kickoffs->first(),'last_match_at'=>$kickoffs->last()]);
         foreach($items as $item) $ticket->selections()->create(['recommendation_id'=>$item->id,'odds_at_creation'=>$item->odds]);
         return redirect()->route('tickets.show',$ticket)->with('success','Biletul a fost generat și salvat.');
     }
 
-    public function matches(Request $request, MatchDataService $matches)
+    public function matches(Request $request, MatchDataService $matches, MatchUrlParser $urlParser, TeamAliasMatcher $aliasMatcher)
     {
-        $items=$matches->upcoming();
+        $team1=trim((string) $request->query('team1', $request->query('team','')));
+        $team2=trim((string) $request->query('team2',''));
+        $matchUrl=trim((string) $request->query('match_url',''));
+        $urlError=null;
+        if ($matchUrl!=='') {
+            $parsed=$urlParser->parse($matchUrl);
+            if ($parsed) [$team1,$team2]=$parsed;
+            else $urlError='Introdu un URL valid de meci Superbet sau Winbet, de forma echipa-1-vs-echipa-2-ID.';
+        }
+        $first=$aliasMatcher->normalize($team1);
+        $second=$aliasMatcher->normalize($team2);
+        $provider=$matchUrl!=='' ? $urlParser->provider($matchUrl) : null;
+        $firstAliases=$aliasMatcher->aliasesFor($team1,$provider);
+        $secondAliases=$aliasMatcher->aliasesFor($team2,$provider);
+        $includeStarted=$first!=='' || $second!=='' || $matchUrl!=='';
+        $items=$matches->searchable($includeStarted);
+        if ($urlError) $items=$items->take(0);
         if($request->filled('league')) $items=$items->where('league_id',(int)$request->league);
-        if($request->filled('team')) $items=$items->filter(fn($m)=>str_contains(strtolower($m->homeTeam->name.' '.$m->awayTeam->name),strtolower($request->team)));
+        if($includeStarted) $items=$items->filter(function($match)use($team1,$team2,$firstAliases,$secondAliases,$aliasMatcher,$provider,$matchUrl){
+            $sameOrder=$aliasMatcher->matches($match->homeTeam,$team1,$firstAliases,$provider)
+                && $aliasMatcher->matches($match->awayTeam,$team2,$secondAliases,$provider);
+            return $matchUrl!=='' ? $sameOrder : $sameOrder
+                || ($aliasMatcher->matches($match->awayTeam,$team1,$firstAliases,$provider)
+                    && $aliasMatcher->matches($match->homeTeam,$team2,$secondAliases,$provider));
+        });
         $leagues=League::where('active',true)
-            ->withCount(['matches as upcoming_matches_count'=>fn($query)=>$query->where('kickoff_at','>',now())])
+            ->withCount(['matches as listed_matches_count'=>fn($query)=>$includeStarted ? $query : $query->where('kickoff_at','>',now())])
             ->orderBy('name')
             ->get();
-        return view('matches.index',['matches'=>$items,'leagues'=>$leagues]);
+        return view('matches.index',['matches'=>$items->values(),'leagues'=>$leagues,'team1'=>$team1,'team2'=>$team2,'includeStarted'=>$includeStarted,'matchUrl'=>$matchUrl,'urlError'=>$urlError]);
     }
 
     public function match(Request $request, FootballMatch $match, FootballStatsService $stats)
     {
-        $match->load(['league','homeTeam','awayTeam','recommendations.market']);
+        $match->load(['league','homeTeam','awayTeam','recommendations.market','latestWeatherSnapshot']);
         $ranked=$match->recommendations->sortByDesc(fn($recommendation)=>($recommendation->eligible?1000:0)+$recommendation->score+max(0,$recommendation->value*100));
         $bestRecommendation=$ranked->firstWhere('eligible',true)??$ranked->first();
         $alternatives=$ranked->filter(fn($recommendation)=>$recommendation->id!==$bestRecommendation?->id && ($recommendation->model_version==='poisson-v1'||$bestRecommendation?->model_version!=='poisson-v1'))->values();
@@ -76,31 +103,45 @@ class BetLensController extends Controller
         return view('matches.show',['match'=>$match,'homeStats'=>$stats->summary($match->homeTeam),'awayStats'=>$stats->summary($match->awayTeam),'bestRecommendation'=>$bestRecommendation,'alternatives'=>$alternatives,'bestOdd'=>$bestOdd,'backTicket'=>$backTicket]);
     }
 
-    public function tickets()
+    public function tickets(Request $request)
     {
-        return view('tickets.index',['tickets'=>GeneratedTicket::with(['league','selections.recommendation.match.homeTeam','selections.recommendation.match.awayTeam'])->latest()->get()]);
+        $sort=in_array($request->query('sort'),['reference','created_at','first_match_at','last_match_at','risk_profile','selections','total_odds','combined_probability','status'],true)?$request->query('sort'):'created_at';
+        $direction=$request->query('direction')==='asc'?'asc':'desc';
+        $tickets=GeneratedTicket::with(['league','operator','selections.recommendation.match.homeTeam','selections.recommendation.match.awayTeam'])->get();
+        $value=fn(GeneratedTicket $ticket)=>match($sort){'reference'=>strtolower($ticket->reference),'created_at'=>$ticket->created_at->timestamp,'first_match_at'=>$ticket->effective_first_match_at?->timestamp??0,'last_match_at'=>$ticket->effective_last_match_at?->timestamp??0,'risk_profile'=>$ticket->risk_profile,'selections'=>$ticket->selections->count(),'total_odds'=>$ticket->total_odds,'combined_probability'=>$ticket->combined_probability,'status'=>strtolower($ticket->status_label)};
+        $tickets=($direction==='asc'?$tickets->sortBy($value,SORT_NATURAL|SORT_FLAG_CASE):$tickets->sortByDesc($value,SORT_NATURAL|SORT_FLAG_CASE))->values();
+        return view('tickets.index',compact('tickets','sort','direction'));
     }
 
     public function ticket(GeneratedTicket $ticket)
     {
         $ticket->load(['league','selections.recommendation.match.league','selections.recommendation.match.homeTeam','selections.recommendation.match.awayTeam','selections.recommendation.match.providerMappings','selections.recommendation.market']);
-        return view('tickets.show',compact('ticket'));
+        $operators=Operator::orderBy('name')->get();
+        return view('tickets.show',compact('ticket','operators'));
     }
 
     public function updateTicket(Request $request,GeneratedTicket $ticket)
     {
         if($request->has('reference')) $request->merge(['reference'=>trim((string)$request->input('reference'))]);
+        $allowedStatuses=['pending','won','lost','void',...Operator::pluck('id')->map(fn($id)=>'placed:'.$id)->all()];
         $data=$request->validate([
-            'status'=>'sometimes|required|in:pending,placed_winbet,won,lost,void',
+            'status'=>['sometimes','required',\Illuminate\Validation\Rule::in($allowedStatuses)],
             'reference'=>'sometimes|required|string|max:100|unique:generated_tickets,reference,'.$ticket->id,
+            'first_match_at'=>'sometimes|nullable|date',
+            'last_match_at'=>'sometimes|nullable|date|after_or_equal:first_match_at',
         ],[
             'reference.required'=>'Introdu o referință pentru bilet.',
             'reference.unique'=>'Această referință este deja folosită de alt bilet.',
             'reference.max'=>'Referința poate avea maximum 100 de caractere.',
+            'last_match_at.after_or_equal'=>'Ultimul meci nu poate fi înaintea primului meci.',
         ]);
+        $submittedSections=(int)isset($data['status'])+(int)isset($data['reference'])+(int)(array_key_exists('first_match_at',$data)||array_key_exists('last_match_at',$data));
+        if(isset($data['status'])&&str_starts_with($data['status'],'placed:')){$data['operator_id']=(int)str($data['status'])->after('placed:')->toString();$data['status']='placed';}
+        elseif(isset($data['status']))$data['operator_id']=null;
         abort_if($data===[],422);
         $ticket->update($data);
-        return back()->with('success',isset($data['reference'])?'Referința biletului a fost actualizată.':'Status actualizat.');
+        $message=$submittedSections>1?'Detaliile biletului au fost actualizate.':(isset($data['reference'])?'Referința biletului a fost actualizată.':(array_key_exists('first_match_at',$data)||array_key_exists('last_match_at',$data)?'Intervalul meciurilor a fost actualizat.':'Status actualizat.'));
+        return back()->with('success',$message);
     }
 
     public function destroyTicket(GeneratedTicket $ticket)
@@ -136,12 +177,28 @@ class BetLensController extends Controller
 
     public function dataSources()
     {
-        $sources=DataSource::orderByRaw('LOWER(name) ASC')->orderBy('id')->get();
+        $sources=DataSource::withCount('records')->get()
+            ->sort(function (DataSource $first, DataSource $second): int {
+                $configuredOrder=(int) $second->is_configured <=> (int) $first->is_configured;
+
+                return $configuredOrder ?: (strnatcasecmp($first->name, $second->name) ?: $first->id <=> $second->id);
+            })->values();
+        $weatherCount=\App\Models\MatchWeatherSnapshot::where('provider','open-meteo')->count();
+        if($weather=$sources->firstWhere('slug','open-meteo'))$weather->records_count+=$weatherCount;
         return view('data-sources.index',compact('sources'));
     }
 
     public function verifyDataSource(DataSource $source)
     {
+        if (!$source->is_configured) {
+            return back()->with('warning', "Configurează {$source->name} înainte de verificare.");
+        }
+        $reserved=DataSource::whereKey($source->id)
+            ->where(fn($query)=>$query->whereNull('last_manual_verification_at')->orWhere('last_manual_verification_at','<=',now()->subMinutes(5)))
+            ->update(['last_manual_verification_at'=>now()]);
+        if (!$reserved) {
+            return back()->with('warning', "{$source->name} poate fi verificată din nou după 5 minute.");
+        }
         VerifyDataSource::dispatchSync($source->id);
         $source->refresh();
         $message=$source->status==='healthy' ? "{$source->name} a fost verificată cu succes." : "Verificarea pentru {$source->name} s-a încheiat: {$source->status_label}.";
@@ -149,15 +206,14 @@ class BetLensController extends Controller
         return back()->with($source->status==='healthy'?'success':'warning',$message)->with('verification_result',$result);
     }
 
-    public function adminLogin(Request $request){return $request->session()->get('betlens_admin')===true?redirect()->route('admin'):view('admin.login');}
+    public function adminLogin(Request $request){$userId=$request->session()->get('admin_user_id');return $userId&&User::whereKey($userId)->where('is_admin',true)->exists()?redirect()->route('admin'):view('admin.login');}
     public function adminAuthenticate(Request $request)
     {
-        $data=$request->validate(['password'=>'required|string|max:255']);
-        $hash=(string)config('services.betlens.admin_password_hash');
-        abort_if($hash==='',503,'Autentificarea de administrator nu este configurată.');
-        if(!Hash::check($data['password'],$hash)) return back()->withErrors(['password'=>'Date de autentificare incorecte.']);
+        $data=$request->validate(['username'=>'required|string|max:100','password'=>'required|string|max:255']);
+        $user=User::where('is_admin',true)->where(fn($query)=>$query->where('username',$data['username'])->orWhere('email',$data['username']))->first();
+        if(!$user||!Hash::check($data['password'],$user->password)) return back()->withErrors(['username'=>'Date de autentificare incorecte.'])->onlyInput('username');
         $request->session()->regenerate();
-        $request->session()->put('betlens_admin',true);
+        $request->session()->put('admin_user_id',$user->id);
         return redirect()->intended(route('admin'));
     }
     public function adminLogout(Request $request)

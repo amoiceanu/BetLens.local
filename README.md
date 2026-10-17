@@ -15,23 +15,44 @@ php artisan migrate --seed
 
 În instalarea XAMPP curentă aplicația este disponibilă la `http://127.0.0.1/php-sites/BetLens.local/public/`.
 
-Autentificarea admin nu are parolă implicită. Generează un hash pentru o parolă de minimum 12 caractere cu:
+Autentificarea admin folosește conturi din tabela `users`, cu parole hash-uite. Creează sau actualizează un administrator cu:
 
 ```bash
-php artisan betlens:admin-password
+php artisan betlens:admin-user
 ```
 
-Copiază valoarea generată în `.env` la `BETLENS_ADMIN_PASSWORD_HASH`. Parola propriu-zisă nu este salvată în configurație.
+Comanda solicită utilizatorul, emailul și parola în mod interactiv; parola nu este salvată în configurație sau în repository.
 
 ## Surse reale
 
-Registrul include football-data.org, API-Football, The Odds API, OpenLigaDB și Understat. Sursele protejate necesită în `.env`:
+Registrul include football-data.org, API-Football, Football-Data.co.uk, The Odds API, OpenLigaDB, StatsBomb Open Data, Understat, Sportmonks Football API și Open-Meteo. Sursele protejate necesită în `.env`:
 
 ```env
 FOOTBALL_DATA_API_KEY=
 API_FOOTBALL_KEY=
 ODDS_API_KEY=
+SPORTMONKS_API_TOKEN=
 ```
+
+Sportmonks este o sursă secundară pentru statistici avansate, line-up-uri, accidentări, suspendări și xG/xGA. Disponibilitatea fiecărui tip de date depinde de ligă și de plan; lipsa datelor este raportată ca „Indisponibil”, niciodată ca zero. Open-Meteo nu necesită cheie și folosește coordonatele stadionului sau ale orașului echipei gazdă.
+
+Prioritatea surselor este:
+
+1. API-Football pentru identitatea meciului, echipe, competiție, start și rezultat.
+2. The Odds API pentru cote.
+3. Sportmonks pentru date avansate, fără suprascrierea sursei principale.
+4. Understat pentru xG/xGA în ligile unde există acoperire.
+5. Open-Meteo pentru context meteo cu pondere mică în analiză.
+
+Asocierea între furnizori folosește echipele, competiția și ora de start cu toleranță de maximum 15 minute. Conflictele sunt înregistrate în `data_sync_logs`, iar meciurile afectate sunt excluse din recomandări.
+
+## Aliasuri pentru căutarea meciurilor
+
+Pagina **Meciuri** acceptă URL-uri de eveniment Superbet și Winbet și caută meciurile deja importate în BetLens. Nu interoghează operatorii și nu folosește ID-ul evenimentului pentru identificare; pentru URL-uri respectă ordinea gazdă–oaspeți din link. Variantele obișnuite precum `Utd`/`United` și diacriticele sunt normalizate automat.
+
+Administratorul poate adăuga, edita și șterge aliasuri din **Admin → Aliasuri echipe** (`/admin/aliasuri`). Fiecare alias aparține unei echipe și poate fi valabil pentru toți operatorii sau doar pentru Superbet ori Winbet. Aliasurile sunt stocate în `team_aliases`, sunt unice în cadrul ligii și operatorului și au prioritate față de potrivirea aproximativă a numelor. Un alias identic cu numele altei echipe din aceeași ligă este refuzat. După deploy, rulează `php artisan migrate --force` înainte de a folosi această pagină.
+
+Pentru a încărca o singură dată aliasurile cunoscute ale echipelor deja importate, rulează `php artisan db:seed --class=KnownTeamAliasesSeeder --force`. Seederul poate fi reluat după importuri noi: nu dublează aliasurile și nu suprascrie intrările editate manual. Aliasurile sunt adăugate numai pentru echipe existente; dacă o echipă nu este încă în baza de date, importă mai întâi meciurile/echipele și reexecută seederul.
 
 Butonul **Verifică acum** testează sursa și importă automat răspunsul în `source_records`. Fiecare înregistrare are identificator extern și checksum: la următoarele sincronizări este clasificată drept nouă, actualizată sau neschimbată, fără duplicate. Rezultatul fiecărei rulări este salvat și în `data_sync_logs`. Nicio selecție nu este inventată când sursele nu furnizează suficiente date.
 
@@ -42,13 +63,18 @@ php artisan queue:work
 php artisan schedule:work
 ```
 
+Schedulerul sincronizează fixtures Sportmonks orar, statisticile la șase ore, absențele zilnic și validează conflictele orar. Open-Meteo este actualizat zilnic pentru meciurile viitoare și la fiecare trei ore în ultimele 24 de ore înainte de start.
+
 ## Teste
 
 ```bash
 php artisan test
+composer run test:acceptance
 ```
 
-GitHub Actions rulează întreaga suită pe fiecare pull request către `main` și la fiecare push pe `main`. Pipeline-ul include testele de securitate, build-ul frontend, `composer audit`, `npm audit` și impune minimum 80% coverage pe linii.
+Scenariile Gherkin din `features/` rulează prin Behat, cu SQLite în memorie și date recreate pentru fiecare scenariu. Acoperă istoricul biletelor, salvarea simultană a detaliilor, respingerea unui interval invalid și afișarea surselor de date. Nu folosesc baza MySQL locală.
+
+GitHub Actions rulează testele PHPUnit și scenariile Gherkin pe fiecare pull request către `main` și la fiecare push pe `main`. Pipeline-ul include testele de securitate, build-ul frontend, `composer audit`, `npm audit` și impune minimum 80% coverage pe linii.
 
 ## Expunere publică
 
