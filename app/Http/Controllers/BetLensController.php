@@ -16,6 +16,8 @@ use App\Models\Recommendation;
 use App\Models\User;
 use App\Services\FootballStatsService;
 use App\Services\MatchDataService;
+use App\Services\MatchUrlParser;
+use App\Services\TeamAliasMatcher;
 use App\Services\TicketBuilderService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -53,16 +55,38 @@ class BetLensController extends Controller
         return redirect()->route('tickets.show',$ticket)->with('success','Biletul a fost generat și salvat.');
     }
 
-    public function matches(Request $request, MatchDataService $matches)
+    public function matches(Request $request, MatchDataService $matches, MatchUrlParser $urlParser, TeamAliasMatcher $aliasMatcher)
     {
-        $items=$matches->upcoming();
+        $team1=trim((string) $request->query('team1', $request->query('team','')));
+        $team2=trim((string) $request->query('team2',''));
+        $matchUrl=trim((string) $request->query('match_url',''));
+        $urlError=null;
+        if ($matchUrl!=='') {
+            $parsed=$urlParser->parse($matchUrl);
+            if ($parsed) [$team1,$team2]=$parsed;
+            else $urlError='Introdu un URL valid de meci Superbet sau Winbet, de forma echipa-1-vs-echipa-2-ID.';
+        }
+        $first=$aliasMatcher->normalize($team1);
+        $second=$aliasMatcher->normalize($team2);
+        $provider=$matchUrl!=='' ? $urlParser->provider($matchUrl) : null;
+        $firstAliases=$aliasMatcher->aliasesFor($team1,$provider);
+        $secondAliases=$aliasMatcher->aliasesFor($team2,$provider);
+        $includeStarted=$first!=='' || $second!=='' || $matchUrl!=='';
+        $items=$matches->searchable($includeStarted);
+        if ($urlError) $items=$items->take(0);
         if($request->filled('league')) $items=$items->where('league_id',(int)$request->league);
-        if($request->filled('team')) $items=$items->filter(fn($m)=>str_contains(strtolower($m->homeTeam->name.' '.$m->awayTeam->name),strtolower($request->team)));
+        if($includeStarted) $items=$items->filter(function($match)use($team1,$team2,$firstAliases,$secondAliases,$aliasMatcher,$provider,$matchUrl){
+            $sameOrder=$aliasMatcher->matches($match->homeTeam,$team1,$firstAliases,$provider)
+                && $aliasMatcher->matches($match->awayTeam,$team2,$secondAliases,$provider);
+            return $matchUrl!=='' ? $sameOrder : $sameOrder
+                || ($aliasMatcher->matches($match->awayTeam,$team1,$firstAliases,$provider)
+                    && $aliasMatcher->matches($match->homeTeam,$team2,$secondAliases,$provider));
+        });
         $leagues=League::where('active',true)
-            ->withCount(['matches as upcoming_matches_count'=>fn($query)=>$query->where('kickoff_at','>',now())])
+            ->withCount(['matches as listed_matches_count'=>fn($query)=>$includeStarted ? $query : $query->where('kickoff_at','>',now())])
             ->orderBy('name')
             ->get();
-        return view('matches.index',['matches'=>$items,'leagues'=>$leagues]);
+        return view('matches.index',['matches'=>$items->values(),'leagues'=>$leagues,'team1'=>$team1,'team2'=>$team2,'includeStarted'=>$includeStarted,'matchUrl'=>$matchUrl,'urlError'=>$urlError]);
     }
 
     public function match(Request $request, FootballMatch $match, FootballStatsService $stats)
@@ -153,7 +177,12 @@ class BetLensController extends Controller
 
     public function dataSources()
     {
-        $sources=DataSource::withCount('records')->orderByRaw('LOWER(name) ASC')->orderBy('id')->get();
+        $sources=DataSource::withCount('records')->get()
+            ->sort(function (DataSource $first, DataSource $second): int {
+                $configuredOrder=(int) $second->is_configured <=> (int) $first->is_configured;
+
+                return $configuredOrder ?: (strnatcasecmp($first->name, $second->name) ?: $first->id <=> $second->id);
+            })->values();
         $weatherCount=\App\Models\MatchWeatherSnapshot::where('provider','open-meteo')->count();
         if($weather=$sources->firstWhere('slug','open-meteo'))$weather->records_count+=$weatherCount;
         return view('data-sources.index',compact('sources'));
@@ -161,6 +190,15 @@ class BetLensController extends Controller
 
     public function verifyDataSource(DataSource $source)
     {
+        if (!$source->is_configured) {
+            return back()->with('warning', "Configurează {$source->name} înainte de verificare.");
+        }
+        $reserved=DataSource::whereKey($source->id)
+            ->where(fn($query)=>$query->whereNull('last_manual_verification_at')->orWhere('last_manual_verification_at','<=',now()->subMinutes(5)))
+            ->update(['last_manual_verification_at'=>now()]);
+        if (!$reserved) {
+            return back()->with('warning', "{$source->name} poate fi verificată din nou după 5 minute.");
+        }
         VerifyDataSource::dispatchSync($source->id);
         $source->refresh();
         $message=$source->status==='healthy' ? "{$source->name} a fost verificată cu succes." : "Verificarea pentru {$source->name} s-a încheiat: {$source->status_label}.";

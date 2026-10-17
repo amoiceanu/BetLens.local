@@ -14,8 +14,21 @@ class DataSourcesTest extends TestCase
             ->assertSee('football-data.org')
             ->assertSee('Sportmonks Football API')
             ->assertSee('Open-Meteo API')
-            ->assertSee('Verifică acum')
-            ->assertSeeInOrder(['API-Football','Football-Data.co.uk','football-data.org','OpenLigaDB','StatsBomb Open Data','The Odds API','Understat']);
+            ->assertSee('Verifică acum');
+    }
+    public function test_configured_sources_are_alphabetical_before_unconfigured_sources(): void
+    {
+        config([
+            'services.api_football.key'=>null,
+            'services.football_data.key'=>null,
+            'services.odds_api.key'=>null,
+            'services.sportmonks.token'=>null,
+        ]);
+
+        $this->get('/surse-date')->assertOk()->assertViewHas('sources', fn($sources) => $sources->pluck('slug')->all() === [
+            'football-data-uk', 'open-meteo', 'openligadb', 'statsbomb-open-data', 'understat',
+            'api-football', 'football-data', 'sportmonks', 'the-odds-api',
+        ]);
     }
     public function test_verification_action_is_hidden_for_an_unconfigured_source(): void
     {
@@ -35,6 +48,26 @@ class DataSourcesTest extends TestCase
         $this->get('/surse-date')
             ->assertOk()
             ->assertSee(route('data-sources.verify',$source),false);
+    }
+    public function test_manual_verification_is_hidden_and_blocked_for_five_minutes_per_source(): void
+    {
+        Http::fake(['raw.githubusercontent.com/*'=>Http::response([['competition_id'=>9,'season_id'=>1]],200)]);
+        $source=\App\Models\DataSource::where('slug','statsbomb-open-data')->firstOrFail();
+        $other=\App\Models\DataSource::where('slug','openligadb')->firstOrFail();
+
+        $this->post(route('data-sources.verify',$source))->assertRedirect();
+        $this->get('/surse-date')->assertOk()
+            ->assertDontSee(route('data-sources.verify',$source),false)
+            ->assertSee(route('data-sources.verify',$other),false);
+        $this->post(route('data-sources.verify',$source))->assertRedirect()->assertSessionHas('warning');
+        $this->assertDatabaseCount('import_audits',1);
+
+        $this->travel(4)->minutes();
+        $this->get('/surse-date')->assertDontSee(route('data-sources.verify',$source),false);
+        $this->travel(1)->minutes();
+        $this->get('/surse-date')->assertSee(route('data-sources.verify',$source),false);
+        $this->post(route('data-sources.verify',$source))->assertRedirect();
+        $this->assertDatabaseCount('import_audits',2);
     }
     public function test_the_table_shows_the_number_of_imported_records_for_each_source(): void
     {
@@ -65,6 +98,7 @@ class DataSourcesTest extends TestCase
         $this->assertDatabaseHas('source_records',['data_source_id'=>$source->id,'record_type'=>'competition']);
         $this->assertDatabaseHas('data_sync_logs',['provider'=>'openligadb','type'=>'source_sync','status'=>'healthy']);
         $this->assertDatabaseHas('import_audits',['provider'=>'openligadb','import_type'=>'source_sync','status'=>'healthy','records_new'=>1,'records_updated'=>0,'records_deleted'=>0]);
+        $this->travel(5)->minutes();
         $this->post("/surse-date/{$source->id}/verifica")->assertSessionHas('verification_result',fn($result)=>$result['new']===0 && $result['unchanged']===1 && $result['database']===1);
         $this->assertDatabaseCount('source_records',1);
         $this->assertDatabaseHas('import_audits',['provider'=>'openligadb','import_type'=>'source_sync','records_new'=>0,'records_updated'=>0,'records_deleted'=>0]);

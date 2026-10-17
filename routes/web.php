@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\BetLensController;
 use App\Http\Controllers\OperatorController;
+use App\Http\Controllers\TeamAliasController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/',[BetLensController::class,'dashboard'])->name('dashboard');
@@ -30,4 +31,8 @@ Route::middleware('admin.auth')->group(function(){
     Route::patch('/admin/ligi/{league}/toggle',[BetLensController::class,'toggleLeague'])->name('admin.leagues.toggle');
     Route::patch('/admin/piete/{market}/toggle',[BetLensController::class,'toggleMarket'])->name('admin.markets.toggle');
     Route::put('/admin/setari',[BetLensController::class,'settings'])->name('admin.settings');
+    Route::get('/admin/aliasuri',[TeamAliasController::class,'index'])->name('admin.aliases.index');
+    Route::post('/admin/aliasuri',[TeamAliasController::class,'store'])->name('admin.aliases.store');
+    Route::patch('/admin/aliasuri/{teamAlias}',[TeamAliasController::class,'update'])->name('admin.aliases.update');
+    Route::delete('/admin/aliasuri/{teamAlias}',[TeamAliasController::class,'destroy'])->name('admin.aliases.destroy');
 });
