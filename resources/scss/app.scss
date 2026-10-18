@@ -1,3 +1,4 @@
+@use 'mindmap';
 @use 'betlens';
 @use 'sources';
 @use 'modal';
@@ -68,3 +69,8 @@ table tbody tr:hover{background:#f7fafc}th,td{border-bottom-color:var(--line)}
 @media(max-width:767px){.navlinks .nav-compact-secondary{display:flex}}
 @media(max-width:420px){.nav .real-data-pill{font-size:8px;padding:6px}.brand{font-size:17px}.brand-mark{width:34px;height:34px}.nav{gap:7px}}
 @media(prefers-reduced-motion:reduce){.navlinks a{transition:none}}
+
+/* Preserve the admin mindmap's dark workspace within the shared light theme. */
+body:has(.mindmap-app){--bg:#071018;--surface:#0e1a25;--surface2:#132230;--line:#203241;--text:#f4f7f9;--muted:#8fa4b3;--green:#3ee68b;--lime:#b8f56a;--amber:#fbbf4a;--red:#fb6574;--blue:#64a8ff;color-scheme:dark;background:#071018;color:var(--text)}
+.mindmap-app .field{background:#0b1720;color:var(--text);border-color:#203241}.mindmap-app .brand{color:var(--text)}.mindmap-app .btn.secondary{background:#132230;color:var(--text)}.mindmap-app table tbody tr:hover{background:#102534}
+.mindmap-app .field option{background:#0b1720;color:var(--text)}
