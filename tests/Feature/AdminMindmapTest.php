@@ -33,7 +33,7 @@ class AdminMindmapTest extends TestCase
     {
         $before = DataSource::count();
         $this->withSession(['admin_user_id' => User::factory()->create(['is_admin' => true])->id])->get(route('admin.mindmap'))
-            ->assertOk()->assertSee('Mindmap date BetLens')->assertSee('Demo')
+            ->assertOk()->assertSee('Mindmap date BetLens')->assertSee('Ecran complet')->assertSee('mm-fullscreen')->assertSee('Demo')
             ->assertSee('Sportmonks')->assertSee('NewsAPI')->assertSee('unavailable')
             ->assertSee('De configurat')->assertDontSee('the-odds-api');
         $this->assertSame($before, DataSource::count());

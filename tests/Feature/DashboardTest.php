@@ -2,6 +2,8 @@
 namespace Tests\Feature;
 use App\Models\League;
 use App\Models\FootballMatch;
+use App\Models\Market;
+use App\Models\Recommendation;
 use App\Models\Team;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -25,6 +27,23 @@ class DashboardTest extends TestCase
             ->assertSee('Liga Test (0)');
     }
 
+    public function test_matches_list_displays_model_probability_for_the_shown_recommendation(): void
+    {
+        $league=League::create(['name'=>'Liga Test','slug'=>'model-probability-test','code'=>'LT','active'=>true]);
+        $home=Team::create(['league_id'=>$league->id,'name'=>'Viking','short_name'=>'Viking']);
+        $away=Team::create(['league_id'=>$league->id,'name'=>'Aston Villa','short_name'=>'Aston']);
+        $match=FootballMatch::create(['league_id'=>$league->id,'home_team_id'=>$home->id,'away_team_id'=>$away->id,'kickoff_at'=>now()->addDay()]);
+        $market=Market::create(['key'=>'h2h','name'=>'1X2']);
+        Recommendation::create(['match_id'=>$match->id,'market_id'=>$market->id,'selection'=>'1','odds'=>1.8,'model_probability'=>0.7341,'implied_probability'=>0.5556,'value'=>0.1785,'confidence'=>'medium','score'=>80,'explanation'=>'Test']);
+
+        $this->get('/meciuri?team1=viking&team2=aston')
+            ->assertOk()
+            ->assertSee('Probabilitate model')
+            ->assertSee('73,4%')
+            ->assertSee('matches-probability-bar', false)
+            ->assertSee('value="73.41"', false);
+    }
+
     public function test_two_team_search_ignores_special_characters_and_sorts_all_matching_dates(): void
     {
         $league=League::create(['name'=>'Bundesliga','slug'=>'bundesliga-test','code'=>'BL','active'=>true]);
@@ -35,7 +54,7 @@ class DashboardTest extends TestCase
         $later=FootballMatch::create(['league_id'=>$league->id,'home_team_id'=>$leipzig->id,'away_team_id'=>$bayern->id,'kickoff_at'=>now()->addMonths(4)]);
         FootballMatch::create(['league_id'=>$league->id,'home_team_id'=>$bayern->id,'away_team_id'=>$other->id,'kickoff_at'=>now()->addDay()]);
 
-        $this->get('/meciuri')->assertOk()->assertViewHas('matches',fn($matches)=>!$matches->contains('id',$today->id));
+        $this->get('/meciuri')->assertOk()->assertSee('Resetează filtrele')->assertSee('href="'.route('matches').'"',false)->assertViewHas('matches',fn($matches)=>!$matches->contains('id',$today->id));
         $this->get('/meciuri?team1=Bayern+Munchen&team2=R.B.+Leipzig')
             ->assertOk()
             ->assertSee('Echipa 1')

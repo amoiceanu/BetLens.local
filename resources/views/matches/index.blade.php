@@ -15,7 +15,7 @@
           <div class="matches-search-divider"><span>sau caută după link</span></div>
           <div class="matches-url-search">
             <label for="match-url"><i data-lucide="link" size="16"></i>URL meci Superbet sau Winbet</label>
-            <div class="matches-url-controls"><input id="match-url" class="field" type="search" name="match_url" value="{{ $matchUrl }}" placeholder="https://winbet.ro/in-play/echipa-1-vs-echipa-2-ID" autocomplete="off" maxlength="2048" aria-describedby="match-url-help"><button class="btn matches-submit" type="submit"><i data-lucide="search" size="18"></i>Caută meciuri</button></div>
+            <div class="matches-url-controls"><input id="match-url" class="field" type="search" name="match_url" value="{{ $matchUrl }}" placeholder="https://winbet.ro/in-play/echipa-1-vs-echipa-2-ID" autocomplete="off" maxlength="2048" aria-describedby="match-url-help"><button class="btn matches-submit" type="submit"><i data-lucide="search" size="18"></i>Caută meciuri</button><a class="btn secondary matches-reset" href="{{ route('matches') }}"><i data-lucide="rotate-ccw" size="16"></i>Resetează filtrele</a></div>
             <small id="match-url-help">Dacă introduci un URL, acesta are prioritate față de echipe. Căutarea respectă ordinea gazdă–oaspeți din link, dar nu verifică ID-ul sau data meciului la operator.</small>
           </div>
         </form>
@@ -24,20 +24,22 @@
     </section>
 
     <section class="matches-results-card" aria-labelledby="matches-results-title">
-        <div class="matches-results-head"><span class="matches-results-icon"><i data-lucide="list-filter" size="18"></i></span><h2 id="matches-results-title">Rezultate <span>({{ $matches->count() }} {{ $matches->count()===1 ? 'meci' : 'meciuri' }})</span></h2></div>
-        <table class="matches-table"><thead><tr><th>Dată</th><th>Liga</th><th>Meci</th><th>Recomandare</th><th>Cotă</th><th>Acțiune</th></tr></thead><tbody>
+        <div class="matches-results-head"><span class="matches-results-icon"><i data-lucide="list-filter" size="20"></i></span><h2 id="matches-results-title">Rezultate <span>({{ $matches->count() }} {{ $matches->count()===1 ? 'meci' : 'meciuri' }})</span></h2></div>
+        <table class="matches-table"><thead><tr><th>Dată</th><th>Liga</th><th>Meci</th><th>Recomandare</th><th>Probabilitate model</th><th>Cotă</th><th>Acțiune</th></tr></thead><tbody>
         @forelse($matches as $match)
             @php($rec=$match->recommendations->sortByDesc('score')->first())
+            @php($modelProbability=$rec?->model_probability === null ? null : max(0, min(100, $rec->model_probability * 100)))
             <tr>
-                <td data-label="Dată"><div class="matches-date"><time datetime="{{ $match->kickoff_at->toIso8601String() }}">{{ $match->kickoff_at->format('d.m.Y · H:i') }}</time>@if($match->is_live_window)<span class="match-live-badge" title="Interval live estimat după ora programată; statusul nu este confirmat în timp real."><span class="match-live-dot"></span>Live</span>@endif</div></td>
+                <td data-label="Dată"><div class="matches-date"><span class="matches-date-icon" aria-hidden="true"><i data-lucide="calendar-days" size="18"></i></span><span class="matches-date-detail"><time datetime="{{ $match->kickoff_at->toIso8601String() }}">{{ $match->kickoff_at->format('d.m.Y · H:i') }}</time>@if($match->is_live_window)<span class="match-live-badge" title="Interval live estimat după ora programată; statusul nu este confirmat în timp real."><span class="match-live-dot"></span>Live</span>@endif</span></div></td>
                 <td data-label="Liga"><span class="matches-league"><span class="matches-league-logo league-logo--{{ $match->league->slug }}" aria-hidden="true">{{ $match->league->code }}</span><span>{{ $match->league->name }}</span></span></td>
                 <td data-label="Meci"><span class="matches-fixture"><span class="matches-fixture-team"><span class="matches-team-logo">@if($match->homeTeam->crest)<img src="{{ $match->homeTeam->crest }}" alt="" loading="lazy" onerror="this.hidden=true">@endif<span class="matches-logo-fallback">{{ mb_substr($match->homeTeam->name,0,1) }}</span></span><span>{{ $match->homeTeam->name }}</span></span><span class="matches-vs">vs</span><span class="matches-fixture-team"><span class="matches-team-logo">@if($match->awayTeam->crest)<img src="{{ $match->awayTeam->crest }}" alt="" loading="lazy" onerror="this.hidden=true">@endif<span class="matches-logo-fallback">{{ mb_substr($match->awayTeam->name,0,1) }}</span></span><span>{{ $match->awayTeam->name }}</span></span></span></td>
                 <td data-label="Recomandare"><span class="matches-rec {{ $rec ? 'is-available' : 'is-unavailable' }}">{{ $rec?->selection ?? 'Indisponibil' }}</span></td>
+                <td data-label="Probabilitate model" class="matches-probability">@if($modelProbability !== null)<span class="matches-probability-value">{{ number_format($modelProbability, 1, ',', '.') }}%</span><progress class="matches-probability-bar" max="100" value="{{ $modelProbability }}" aria-label="Probabilitatea modelului pentru {{ $match->homeTeam->name }} - {{ $match->awayTeam->name }}">{{ number_format($modelProbability, 1, ',', '.') }}%</progress>@else<span class="matches-probability-unavailable">Indisponibil</span>@endif</td>
                 <td data-label="Cotă" class="matches-odd">{{ $rec ? number_format($rec->odds,2) : '—' }}</td>
-                <td data-label="Acțiune"><a class="btn secondary small matches-analysis" href="{{ route('matches.show',$match) }}" aria-label="Vezi analiza: {{ $match->homeTeam->name }} - {{ $match->awayTeam->name }}"><i data-lucide="chart-no-axes-column" size="15"></i>Vezi analiza<i data-lucide="chevron-right" size="15"></i></a></td>
+                <td data-label="Acțiune"><a class="btn secondary small matches-analysis" href="{{ route('matches.show',$match) }}" aria-label="Vezi analiza: {{ $match->homeTeam->name }} - {{ $match->awayTeam->name }}"><i data-lucide="chart-no-axes-column" size="17"></i>Vezi analiza<i data-lucide="arrow-right" size="17"></i></a></td>
             </tr>
         @empty
-            <tr><td colspan="6" class="matches-empty"><i data-lucide="search-x" size="27"></i><strong>Niciun meci găsit</strong><span>{{ $matchUrl!=='' && !$urlError ? 'Meciul din URL nu există încă în baza BetLens. Verifică dacă liga a fost importată.' : 'Încearcă alte echipe sau selectează o altă ligă.' }}</span></td></tr>
+            <tr><td colspan="7" class="matches-empty"><i data-lucide="search-x" size="27"></i><strong>Niciun meci găsit</strong><span>{{ $matchUrl!=='' && !$urlError ? 'Meciul din URL nu există încă în baza BetLens. Verifică dacă liga a fost importată.' : 'Încearcă alte echipe sau selectează o altă ligă.' }}</span></td></tr>
         @endforelse
         </tbody></table>
     </section>
