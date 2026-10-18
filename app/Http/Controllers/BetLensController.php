@@ -210,7 +210,8 @@ class BetLensController extends Controller
     public function adminAuthenticate(Request $request)
     {
         $data=$request->validate(['username'=>'required|string|max:100','password'=>'required|string|max:255']);
-        $user=User::where('is_admin',true)->where(fn($query)=>$query->where('username',$data['username'])->orWhere('email',$data['username']))->first();
+        $username=trim($data['username']);
+        $user=User::where('is_admin',true)->where(fn($query)=>$query->where('username',$username)->orWhere('email',$username))->first();
         if(!$user||!Hash::check($data['password'],$user->password)) return back()->withErrors(['username'=>'Date de autentificare incorecte.'])->onlyInput('username');
         $request->session()->regenerate();
         $request->session()->put('admin_user_id',$user->id);

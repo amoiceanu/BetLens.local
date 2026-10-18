@@ -53,4 +53,23 @@ class SecurityTest extends TestCase
     {
         $this->get(route('admin'))->assertRedirect(route('admin.login'));
     }
+    public function test_admin_can_sign_in_with_email_or_padded_username(): void
+    {
+        $user = User::factory()->create(['username' => 'operator-admin', 'email' => 'operator@example.test', 'is_admin' => true, 'password' => Hash::make('a-secure-password')]);
+        foreach (['  operator-admin  ', 'operator@example.test'] as $username) {
+            $this->post(route('admin.authenticate'), ['username' => $username, 'password' => 'a-secure-password'])
+                ->assertRedirect(route('admin'))
+                ->assertSessionHas('admin_user_id', $user->id);
+            $this->post(route('admin.logout'))->assertSessionMissing('admin_user_id');
+        }
+    }
+
+    public function test_non_admin_cannot_sign_in_to_admin_even_with_correct_credentials(): void
+    {
+        User::factory()->create(['username' => 'regular-user', 'is_admin' => false, 'password' => Hash::make('a-secure-password')]);
+        $this->post(route('admin.authenticate'), ['username' => 'regular-user', 'password' => 'a-secure-password'])
+            ->assertSessionHasErrors('username')
+            ->assertSessionMissing('admin_user_id');
+    }
+
 }

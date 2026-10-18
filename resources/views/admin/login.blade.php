@@ -1,1 +1,19 @@
-@extends('layouts.app') @section('title','Admin Login') @section('content')<section class="card login"><p class="eyebrow">Zonă protejată</p><h1>Administrare BetLens</h1><p class="muted">Autentifică-te folosind contul de administrator.</p><form method="post" action="{{ route('admin.authenticate') }}">@csrf<label class="muted form-label">Utilizator sau email</label><input class="field login-username-field" name="username" value="{{ old('username') }}" autocomplete="username" autofocus required><label class="muted form-label login-password-label">Parolă</label><input class="field login-password-field" type="password" name="password" autocomplete="current-password" required><button class="btn btn-block">Autentificare</button></form><p class="muted login-hint">Accesul este limitat după încercări repetate.</p></section>@endsection
+@extends('layouts.app')
+@section('title','Admin Login')
+@section('content')
+<section class="card login">
+    <p class="eyebrow">Zonă protejată</p>
+    <h1>Administrare BetLens</h1>
+    <p class="muted">Autentifică-te folosind contul de administrator.</p>
+    <form method="post" action="{{ route('admin.authenticate') }}">
+        @csrf
+        <label class="muted form-label" for="username">Utilizator sau email</label>
+        <input id="username" class="field login-username-field" name="username" value="{{ old('username') }}" autocomplete="username" autofocus required>
+        <label class="muted form-label login-password-label" for="password">Parolă</label>
+        <input id="password" class="field login-password-field" type="password" name="password" autocomplete="current-password" required>
+        @if ($errors->any())<p class="login-error" role="alert">{{ $errors->first() }}</p>@endif
+        <button class="btn btn-block">Autentificare</button>
+    </form>
+    <p class="muted login-hint">Accesul este limitat după încercări repetate.</p>
+</section>
+@endsection
