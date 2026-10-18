@@ -17,7 +17,8 @@ class MatchAnalysisService
 
     public function __construct(
         private ValueCalculatorService $valueCalculator,
-        private TeamStatisticsService $statistics
+        private TeamStatisticsService $statistics,
+        private WeatherImpactService $weatherImpact
     ) {}
 
     public function generateForLeague(League $league): array
@@ -26,8 +27,9 @@ class MatchAnalysisService
         $history = $this->history($league);
         $created = $updated = $eligible = 0;
 
-        $matches = FootballMatch::with(['odds.market', 'homeTeam', 'awayTeam'])
+        $matches = FootballMatch::with(['odds.market', 'homeTeam', 'awayTeam', 'latestWeatherSnapshot'])
             ->where('league_id', $league->id)
+            ->where('data_status','!=','conflict')
             ->where('kickoff_at', '>', now())
             ->whereHas('odds')
             ->get();
@@ -42,6 +44,8 @@ class MatchAnalysisService
 
                 $value = $this->valueCalculator->calculate($probability, $price['price']);
                 $score = (int) round(min(100, $probability * 70 + max(0, min(.15, $value)) / .15 * 30));
+                $weather=$this->weatherImpact->assess($match->latestWeatherSnapshot,$price['selection']);
+                $score=max(0,min(100,$score+$weather['score_adjustment']));
                 $isEligible = $this->passesThreshold('agresiv', $probability, $value, $score);
                 $existing = Recommendation::where([
                     'match_id' => $match->id,
@@ -59,8 +63,8 @@ class MatchAnalysisService
                         'value' => $value,
                         'confidence' => $score >= 72 ? 'Ridicat' : ($score >= 60 ? 'Mediu' : 'Scăzut'),
                         'score' => $score,
-                        'explanation' => $this->explanation($match, $price['selection'], $probability, $value, $history),
-                        'factors' => ['model' => 'Poisson', 'history_matches' => $history['played'], 'expected_home_goals' => $probabilities['_home_xg'], 'expected_away_goals' => $probabilities['_away_xg'], 'bookmaker' => $price['provider']],
+                        'explanation' => $this->explanation($match, $price['selection'], $probability, $value, $history).($weather['explanation']?' '.$weather['explanation']:''),
+                        'factors' => ['model' => 'Poisson', 'history_matches' => $history['played'], 'expected_home_goals' => $probabilities['_home_xg'], 'expected_away_goals' => $probabilities['_away_xg'], 'bookmaker' => $price['provider'], 'weather_score_adjustment'=>$weather['score_adjustment']],
                         'eligible' => $isEligible,
                     ]
                 );
@@ -78,8 +82,9 @@ class MatchAnalysisService
         $history = $this->history($league);
         $created = $updated = $eligible = 0;
         $markets = Market::whereIn('key', ['result', 'over_25', 'double_chance'])->where('active', true)->get()->keyBy('key');
-        $matches = FootballMatch::with(['homeTeam', 'awayTeam', 'league'])
+        $matches = FootballMatch::with(['homeTeam', 'awayTeam', 'league', 'latestWeatherSnapshot'])
             ->where('league_id', $league->id)
+            ->where('data_status','!=','conflict')
             ->whereBetween('kickoff_at', [now(), now()->addDays($days)])
             ->whereDoesntHave('odds')
             ->orderBy('kickoff_at')->get();
@@ -101,6 +106,8 @@ class MatchAnalysisService
                     default => $p[$candidate['selection']],
                 };
                 $score = (int) round($probability * 100);
+                $weather=$this->weatherImpact->assess($match->latestWeatherSnapshot,$candidate['selection']);
+                $score=max(0,min(100,$score+$weather['score_adjustment']));
                 $isEligible = $this->passesModelThreshold('agresiv', $probability, $score);
                 $identity = ['match_id' => $match->id, 'market_id' => $market->id, 'selection' => $candidate['selection'], 'model_version' => self::FAIR_MODEL_VERSION];
                 $existing = Recommendation::where($identity)->first();
@@ -112,8 +119,8 @@ class MatchAnalysisService
                     'value' => 0,
                     'confidence' => $score >= 72 ? 'Ridicat' : ($score >= 60 ? 'Mediu' : 'Scăzut'),
                     'score' => $score,
-                    'explanation' => sprintf('Cotă echitabilă BetLens calculată din %d rezultate reale din %s. Modelul Poisson estimează selecția %s la %.1f%%. Aceasta este o estimare analitică, nu o cotă oferită de un bookmaker.', $history['played'], $league->name, $candidate['selection'], $probability * 100),
-                    'factors' => ['model' => 'Poisson', 'pricing' => 'model_fair', 'history_matches' => $history['played'], 'expected_home_goals' => $p['_home_xg'], 'expected_away_goals' => $p['_away_xg']],
+                    'explanation' => sprintf('Cotă echitabilă BetLens calculată din %d rezultate reale din %s. Modelul Poisson estimează selecția %s la %.1f%%. Aceasta este o estimare analitică, nu o cotă oferită de un bookmaker.', $history['played'], $league->name, $candidate['selection'], $probability * 100).($weather['explanation']?' '.$weather['explanation']:''),
+                    'factors' => ['model' => 'Poisson', 'pricing' => 'model_fair', 'history_matches' => $history['played'], 'expected_home_goals' => $p['_home_xg'], 'expected_away_goals' => $p['_away_xg'], 'weather_score_adjustment'=>$weather['score_adjustment']],
                     'eligible' => $isEligible,
                 ]);
                 $existing ? $updated++ : $created++;
