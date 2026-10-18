@@ -25,6 +25,9 @@ Route::post('/surse-date/{source}/verifica',[BetLensController::class,'verifyDat
 Route::get('/admin/login',[BetLensController::class,'adminLogin'])->name('admin.login');
 Route::post('/admin/login',[BetLensController::class,'adminAuthenticate'])->middleware('throttle:admin-login')->name('admin.authenticate');
 Route::middleware('admin.auth')->group(function(){
+    Route::get('/admin/mindmap', [\App\Http\Controllers\AdminMindmapController::class, 'index'])->name('admin.mindmap');
+    Route::post('/admin/mindmap/sources', [\App\Http\Controllers\AdminMindmapController::class, 'store'])->middleware('throttle:10,1')->name('admin.mindmap.store');
+    Route::post('/admin/mindmap/sources/{source}/import', [\App\Http\Controllers\AdminMindmapController::class, 'import'])->middleware('throttle:5,1')->name('admin.mindmap.import');
     Route::get('/admin',[BetLensController::class,'admin'])->name('admin');
     Route::post('/admin/logout',[BetLensController::class,'adminLogout'])->name('admin.logout');
     Route::post('/admin/sync',[BetLensController::class,'sync'])->name('admin.sync');

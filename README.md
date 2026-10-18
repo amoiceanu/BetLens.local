@@ -93,3 +93,21 @@ SESSION_SAME_SITE=strict
 Loginul admin este limitat la 5 încercări pe minut și regenerează sesiunea după autentificare. Aplicația adaugă antete de securitate, iar configurația Apache elimină antetul `X-Powered-By` și dezactivează expunerea versiunii PHP.
 
 Rezultatele istorice nu garantează performanța viitoare, iar BetLens nu promite profit.
+
+## Mindmap date BetLens (admin)
+
+Pagina `/admin/mindmap` este accesibilă prin **Admin → Mindmap date**, cu aceeași sesiune de administrator. Nu necesită migrații noi, servicii externe sau o bibliotecă de grafuri. Vizualizarea folosește SVG, CSS și JavaScript simplu în buildul Vite existent.
+
+Catalogul de integrare este separat în `App\Services\Mindmap\SourceCatalog`; `MindmapData` construiește un snapshot exclusiv din modelele și jurnalele existente. În absența meciurilor și înregistrărilor importate, nodurile demonstrative și fiecare indicator din panou sunt etichetate **Demo**. Vizualizarea Demo nu inserează meciuri, sincronizări sau statistici fictive în bază. Sursele adăugate prin modal sunt salvate în `data_sources`, inactive, cu metadate în `application_settings` (grupul `mindmap`). Nu se solicită și nu se afișează chei API.
+
+Indicatorii au proveniență și timestamp de observare:
+
+- Acoperire: câmpuri completate / câmpuri așteptate pentru echipa gazdă, echipa oaspete, ora și stadionul meciurilor din competiția/sezonul selectate. Nu reprezintă acoperirea calendarului oficial, care nu este disponibil ca numitor.
+- Calitate: înregistrări cu identificator extern, payload nenul și checksum SHA-256 valid / înregistrările surselor afișate. Acesta este un control de integritate, nu o certificare a rezultatelor sportive.
+- Contradicțiile checksum/payload sunt marcate `conflict`. Reconcilierea semantică între furnizori nu există încă și este `unavailable`, la fel ca progresul procentual fără un total de lucru cunoscut.
+- Importurile de astăzi sunt rulările `source_sync` cu status `healthy`, conform fusului orar al aplicației. O verificare API reușită nu implică automat import de meciuri.
+- Costul API rămâne **De configurat** până la introducerea planurilor tarifare. Următoarea fereastră este estimată din programarea orară existentă; nu dovedește că schedulerul rulează.
+
+**Rulează import** este disponibil în drawer numai pentru adaptoarele existente cu endpoint exact aprobat: API-Football (starea API), football-data.org (competiții), OpenLigaDB și StatsBomb Open Data. Endpointurile adăugate arbitrar nu sunt executate. Lipsa acreditărilor blochează importul înainte de apelul extern. Importatoarele RSS/Atom, HTML cu permisiune explicită, CSV încărcat manual, corectare manuală și un API REST public necesită implementări separate; pagina nu simulează aceste operații. Sursele neconfigurate rămân disponibile în catalog pentru planificare.
+
+Verificări: `php artisan test`, `npm run build`; testele specifice sunt în `tests/Feature/AdminMindmapTest.php` și nu apelează servicii externe.

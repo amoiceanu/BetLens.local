@@ -12,7 +12,7 @@
 <header class="header" x-data="{open:false}">
     <nav class="container nav" aria-label="Navigație principală">
         <a class="brand" href="{{ route('dashboard') }}"><span class="brand-mark"><i data-lucide="scan-line" size="19"></i></span>BetLens</a>
-        <button class="mobile-toggle" type="button" @click="open=!open" :aria-expanded="open.toString()" aria-controls="main-navigation" aria-label="Deschide meniul"><i data-lucide="menu"></i></button>
+        <button class="mobile-toggle" type="button" @click="open=!open" :aria-expanded="open.toString()" aria-controls="main-navigation" aria-label="Deschide meniul"><span aria-hidden="true">☰</span></button>
         <div id="main-navigation" class="navlinks" :class="open&&'open'">
             <a class="{{ request()->routeIs('dashboard')?'active':'' }}" href="{{ route('dashboard') }}"><i data-lucide="house" size="17"></i>Dashboard</a>
             <a class="{{ request()->routeIs('matches*')?'active':'' }}" href="{{ route('matches') }}"><i data-lucide="calendar-days" size="17"></i>Meciuri</a>
@@ -30,6 +30,6 @@
 </header>
 <main class="main"><div class="container">@if(session('success'))<div class="flash">{{ session('success') }}</div>@endif @if(session('warning'))<div class="flash warning">{{ session('warning') }}</div>@endif @if($errors->any())<div class="flash warning">{{ $errors->first() }}</div>@endif @yield('content')</div></main>
 <footer class="footer"><div class="container"><span>© {{ date('Y') }} BetLens · Analiză statistică independentă</span><span>BetLens oferă analize statistice, nu garanții. Joacă responsabil.</span></div></footer>
-<script>document.addEventListener('DOMContentLoaded',()=>lucide.createIcons())</script>@stack('scripts')
+<script>document.addEventListener('DOMContentLoaded',()=>window.lucide?.createIcons())</script>@stack('scripts')
 </body>
 </html>
