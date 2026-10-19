@@ -61,13 +61,13 @@ class SourceCoverageTest extends TestCase
     public function test_admin_routes_exports_and_reviews_reject_unauthorized_users(): void
     {
         foreach (['admin.coverage', 'admin.coverage.export', 'admin.coverage.discrepancies', 'admin.coverage.discrepancies.export'] as $route) {
-            $this->get(route($route))->assertRedirect(route('admin.login'));
+            $this->get(route($route))->assertRedirect(route('user.login'));
         }
         $source = DataSource::first();
-        $this->get(route('admin.coverage.details', $source))->assertRedirect(route('admin.login'));
-        $this->get('/admin/acoperire/neconcordante/999')->assertRedirect(route('admin.login'));
-        $this->patch('/admin/acoperire/neconcordante/999', ['status' => 'ignored'])->assertRedirect(route('admin.login'));
-        $this->withSession(['admin_user_id' => User::factory()->create(['is_admin' => false])->id])->get(route('admin.coverage.export'))->assertRedirect(route('admin.login'));
+        $this->get(route('admin.coverage.details', $source))->assertRedirect(route('user.login'));
+        $this->get('/admin/acoperire/neconcordante/999')->assertRedirect(route('user.login'));
+        $this->patch('/admin/acoperire/neconcordante/999', ['status' => 'ignored'])->assertRedirect(route('user.login'));
+        $this->withSession(['admin_user_id' => User::factory()->create(['is_admin' => false])->id])->get(route('admin.coverage.export'))->assertRedirect(route('user.login'));
     }
 
     public function test_empty_matrix_combined_filters_and_exports_do_not_call_providers(): void

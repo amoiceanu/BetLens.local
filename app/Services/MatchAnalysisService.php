@@ -7,6 +7,7 @@ use App\Models\FootballMatch;
 use App\Models\League;
 use App\Models\Market;
 use App\Models\Recommendation;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -130,6 +131,23 @@ class MatchAnalysisService
         return compact('created', 'updated', 'eligible') + ['matches_analyzed' => $matches->count()];
     }
 
+    /** Read-only 1/X/2 estimate from results available before the selected match. */
+    public function simulateResultProbabilities(FootballMatch $match): ?array
+    {
+        $match->loadMissing('league');
+        $history = $this->history($match->league, $match->kickoff_at);
+        if ($history['played'] === 0) return null;
+
+        $values = $this->probabilities($match, $history);
+
+        return [
+            'probabilities' => ['1' => $values['1'], 'X' => $values['X'], '2' => $values['2']],
+            'history_matches' => $history['played'],
+            'expected_home_goals' => $values['_home_xg'],
+            'expected_away_goals' => $values['_away_xg'],
+        ];
+    }
+
     public function passesThreshold(string $profile, float $probability, float $value, int $score): bool
     {
         $defaults = [
@@ -155,10 +173,11 @@ class MatchAnalysisService
             && $score >= (int) ($settings['min_confidence'] ?? $minimumScore);
     }
 
-    private function history(League $league): array
+    private function history(League $league, ?CarbonInterface $before = null): array
     {
         $rows = DB::table('matches as m')->joinSub((new MatchResultHistory)->query(), 'r', 'r.match_id', '=', 'm.id')
             ->where('m.league_id', $league->id)
+            ->when($before, fn ($query) => $query->where('m.kickoff_at', '<', $before))
             ->select('m.home_team_id', 'm.away_team_id', 'r.home_score', 'r.away_score')
             ->get();
         $stats = [];

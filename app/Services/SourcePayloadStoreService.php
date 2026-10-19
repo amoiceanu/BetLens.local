@@ -22,6 +22,8 @@ class SourcePayloadStoreService
         $message=app(\App\Services\Coverage\SafeImportMessage::class)->clean($message);
         app(\App\Services\Coverage\ObservationProjector::class)->flush();
         DB::table('data_sync_logs')->insert(['provider'=>$provider,'type'=>$type,'status'=>$status,'records'=>$records,'message'=>$message,'started_at'=>now()->subMilliseconds((int)((microtime(true)-$started)*1000)),'finished_at'=>now(),'created_at'=>now(),'updated_at'=>now()]);
-        app(ImportAuditService::class)->record($provider,$type,$status,$metrics+['read'=>$records,'started_at'=>now()->subMilliseconds((int)((microtime(true)-$started)*1000)),'finished_at'=>now()],$message);
+        $job = collect(debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 8))
+            ->pluck('class')->first(fn ($class) => is_string($class) && str_starts_with($class, 'App\\Jobs\\'));
+        app(ImportAuditService::class)->record($provider,$type,$status,$metrics+['read'=>$records],$message,$started,$job ?? $type);
     }
 }

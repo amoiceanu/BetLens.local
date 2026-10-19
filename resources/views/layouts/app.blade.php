@@ -9,27 +9,30 @@
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script><script src="https://cdn.jsdelivr.net/npm/chart.js"></script><script src="https://unpkg.com/lucide@latest"></script>
 </head>
 <body>
+@php($adminAccount=\App\Support\TicketAccess::admin(request()))
+@php($userAccount=request()->user())
+@php($account=$adminAccount ?? $userAccount)
+@php($accountLabel=$account ? (filled($adminAccount?->username) ? $adminAccount->username : (filled($account->name) ? $account->name : $account->email)) : null)
 <header class="header" x-data="{open:false}">
-    <nav class="container nav" aria-label="Navigație principală">
-        <a class="brand" href="{{ route('dashboard') }}"><span class="brand-mark"><i data-lucide="scan-line" size="19"></i></span>BetLens</a>
+    <nav class="container nav {{ $adminAccount ? 'nav-admin' : (!$userAccount ? 'nav-guest' : 'nav-user') }}" aria-label="Navigație principală">
+        <a class="brand" href="{{ $adminAccount ? route('data-sources') : route('dashboard') }}"><span class="brand-mark"><i data-lucide="scan-line" size="19"></i></span>BetLens</a>
         <button class="mobile-toggle" type="button" @click="open=!open" :aria-expanded="open.toString()" aria-controls="main-navigation" aria-label="Deschide meniul"><span aria-hidden="true">☰</span></button>
         <div id="main-navigation" class="navlinks" :class="open&&'open'">
-            <a class="{{ request()->routeIs('dashboard')?'active':'' }}" href="{{ route('dashboard') }}"><i data-lucide="house" size="17"></i>Dashboard</a>
+            @if(!$adminAccount)<a class="{{ request()->routeIs('dashboard')?'active':'' }}" href="{{ route('dashboard') }}"><i data-lucide="house" size="17"></i>Dashboard</a>@endif
             <a class="{{ request()->routeIs('matches*')?'active':'' }}" href="{{ route('matches') }}"><i data-lucide="calendar-days" size="17"></i>Meciuri</a>
-            <a class="{{ request()->routeIs('tickets*')?'active':'' }}" href="{{ route('tickets') }}"><i data-lucide="ticket" size="17"></i>Biletele mele</a>
-            <a class="nav-compact-secondary {{ request()->routeIs('performance')?'active':'' }}" href="{{ route('performance') }}"><i data-lucide="chart-no-axes-column" size="17"></i>Performanță</a>
-            <a class="nav-secondary {{ request()->routeIs('operators.*')?'active':'' }}" href="{{ route('operators.index') }}"><i data-lucide="database" size="17"></i>Operatori</a>
-            <a class="nav-secondary {{ request()->routeIs('data-sources*')?'active':'' }}" href="{{ route('data-sources') }}"><i data-lucide="link" size="17"></i>Sursa datelor</a>
-            <a class="nav-secondary {{ request()->routeIs('admin*')?'active':'' }}" href="{{ route('admin') }}"><i data-lucide="user-round" size="17"></i>Admin</a>
+            @if($userAccount && !$adminAccount)<a class="{{ request()->routeIs('tickets*')?'active':'' }}" href="{{ route('tickets') }}"><i data-lucide="ticket" size="17"></i>Biletele mele</a>@endif
+            @if($userAccount && !$adminAccount)<span class="nav-account" title="{{ $account->email }}"><i data-lucide="circle-user-round" size="17" aria-hidden="true"></i><span class="nav-account-name">{{ $accountLabel }}</span></span>@endif
+            @if($userAccount && !$adminAccount)<form class="nav-logout" method="post" action="{{ route('user.logout') }}">@csrf<button type="submit"><i data-lucide="log-out" size="17" aria-hidden="true"></i>Ieși din cont</button></form>@endif
+            @if(!$userAccount && !$adminAccount)<a class="nav-login {{ request()->routeIs('user.login','user.register')?'active':'' }}" href="{{ route('user.login') }}"><i data-lucide="log-in" size="17"></i>Intră în cont</a>@endif
         </div>
-        <details class="nav-more {{ request()->routeIs('performance','operators.*','data-sources*','admin*') ? 'active' : '' }}"><summary>Mai multe <i data-lucide="chevron-down" size="15"></i></summary><div class="nav-more-menu">
-            <a class="nav-more-performance {{ request()->routeIs('performance')?'active':'' }}" href="{{ route('performance') }}">Performanță</a><a class="{{ request()->routeIs('operators.*')?'active':'' }}" href="{{ route('operators.index') }}">Operatori</a><a class="{{ request()->routeIs('data-sources*')?'active':'' }}" href="{{ route('data-sources') }}">Sursa datelor</a><a class="{{ request()->routeIs('admin*')?'active':'' }}" href="{{ route('admin') }}">Admin</a>
-        </div></details>
-        <span class="nav-spacer"></span><span class="demo-pill real-data-pill"><span class="demo-dot"></span>Surse reale</span>
+        @if($adminAccount)<div class="admin-header-actions"><span class="nav-account" title="{{ $account->email }}"><i data-lucide="circle-user-round" size="17" aria-hidden="true"></i><span class="nav-account-name">{{ $accountLabel }}</span></span><form class="nav-logout" method="post" action="{{ route('admin.logout') }}">@csrf<button type="submit"><i data-lucide="log-out" size="17" aria-hidden="true"></i>Ieși din cont</button></form></div>@else<span class="nav-spacer"></span>@endif
     </nav>
+    @if($adminAccount)<div class="container admin-header-status"><span class="demo-pill real-data-pill"><span class="demo-dot"></span>Surse reale</span></div>@endif
 </header>
-<main class="main"><div class="container">@if(session('success'))<div class="flash">{{ session('success') }}</div>@endif @if(session('warning'))<div class="flash warning">{{ session('warning') }}</div>@endif @if($errors->any())<div class="flash warning">{{ $errors->first() }}</div>@endif @yield('content')</div></main>
-<footer class="footer"><div class="container"><span>© {{ date('Y') }} BetLens · Analiză statistică independentă</span><span>BetLens oferă analize statistice, nu garanții. Joacă responsabil.</span></div></footer>
+<main class="main {{ $adminAccount ? 'admin-main' : '' }}"><div class="container {{ $adminAccount ? 'admin-layout' : '' }}">@if($adminAccount)@include('admin.partials.navigation')<div class="admin-layout-content">@endif
+@if(session('success'))<div class="flash">{{ session('success') }}</div>@endif @if(session('warning'))<div class="flash warning">{{ session('warning') }}</div>@endif @if($errors->any())<div class="flash warning">{{ $errors->first() }}</div>@endif @yield('content')
+@if($adminAccount)</div>@endif</div></main>
+<footer class="footer"><div class="container"><span>© {{ date('Y') }} BetLens · Analiză statistică independentă</span><span>BetLens oferă analize statistice, nu garanții. Joacă responsabil.</span>@if($adminAccount)@php($databaseStatus=\App\Support\DatabaseConnectionStatus::current())<span class="admin-database-status {{ $databaseStatus['online'] ? 'is-online' : 'is-other' }}" role="status">BD: {{ $databaseStatus['label'] }}</span>@endif</div></footer>
 <script>document.addEventListener('DOMContentLoaded',()=>window.lucide?.createIcons())</script>@stack('scripts')
 </body>
 </html>

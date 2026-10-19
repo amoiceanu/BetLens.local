@@ -1,7 +1,7 @@
 @extends('layouts.app')
 @section('title', 'Aliasuri echipe')
 @section('content')
-<div class="page-head"><div><p class="eyebrow">Administrare</p><h1>Aliasuri echipe</h1><p>Asociază numele folosite de operatori cu echipele din BetLens. Aliasurile au prioritate față de potrivirea aproximativă.</p></div><a class="btn secondary" href="{{ route('admin') }}">Înapoi la administrare</a></div>
+<div class="page-head"><div><p class="eyebrow">Administrare</p><h1>Aliasuri echipe</h1><p>Asociază numele folosite de operatori cu echipele din BetLens. Aliasurile au prioritate față de potrivirea aproximativă.</p></div><a class="btn secondary" href="{{ route('data-sources') }}">Înapoi la surse</a></div>
 
 <section class="card aliases-card" aria-labelledby="aliases-add-title">
     <h2 id="aliases-add-title">Adaugă alias</h2>

@@ -77,7 +77,7 @@ class SportmonksProvider implements FootballDataProviderInterface
 
     private function request(string $path,array $query=[]): array
     {
-        $token=(string)config('services.sportmonks.token');
+        $token=(string)(\App\Models\DataSource::where('slug','sportmonks')->first()?->credentialValue());
         if($token==='')throw new RuntimeException('Tokenul Sportmonks nu este configurat.');
         $response=$this->client()->get($path,$query+['api_token'=>$token]);
         if($response->status()===429)throw new RuntimeException('Limita de cereri Sportmonks a fost atinsă; sincronizarea va fi reîncercată.');

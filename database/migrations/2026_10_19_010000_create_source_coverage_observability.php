@@ -70,8 +70,6 @@ return new class extends Migration
         Schema::table('import_audits', function (Blueprint $t) {
             $t->foreignId('league_id')->nullable()->constrained()->restrictOnDelete();
             $t->foreignId('season_id')->nullable()->constrained()->restrictOnDelete();
-            $t->dateTime('started_at')->nullable();
-            $t->dateTime('finished_at')->nullable();
             $t->unsignedInteger('records_read')->nullable();
             $t->unsignedInteger('records_ignored')->nullable();
             $t->unsignedInteger('errors_count')->nullable();
@@ -87,7 +85,7 @@ return new class extends Migration
             $t->dropIndex('coverage_audit_scope');
             $t->dropConstrainedForeignId('league_id');
             $t->dropConstrainedForeignId('season_id');
-            $t->dropColumn(['started_at', 'finished_at', 'records_read', 'records_ignored', 'errors_count']);
+            $t->dropColumn(['records_read', 'records_ignored', 'errors_count']);
         });
         Schema::dropIfExists('source_data_discrepancies');
         Schema::dropIfExists('source_coverage_cells');

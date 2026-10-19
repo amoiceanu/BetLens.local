@@ -34,12 +34,30 @@ return [
         'markets' => env('ODDS_API_MARKETS', 'h2h,totals'),
     ],
 
+    'odds_api_io' => [
+        'key' => env('ODDS_API_IO_KEY'),
+    ],
+
+    'oddspapi' => [
+        'key' => env('ODDSPAPI_API_KEY'),
+    ],
+
     'football_data' => [
         'key' => env('FOOTBALL_DATA_API_KEY'),
     ],
 
     'api_football' => [
         'key' => env('API_FOOTBALL_KEY'),
+    ],
+
+    'digitalocean_functions' => [
+        'api_football_l1' => [
+            'url' => env('BETLENS_API_FOOTBALL_FUNCTION_URL'),
+            'token' => env('BETLENS_API_FOOTBALL_FUNCTION_TOKEN'),
+            'timeout' => (int) env('BETLENS_API_FOOTBALL_FUNCTION_TIMEOUT', 30),
+            'name' => 'BetLens-Import-L1-APIFootball-JSON',
+            'queue' => env('BETLENS_API_FOOTBALL_FUNCTION_QUEUE', 'betlens-api-football-l1'),
+        ],
     ],
 
     'sportmonks' => [

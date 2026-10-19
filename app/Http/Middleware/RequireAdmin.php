@@ -14,9 +14,12 @@ class RequireAdmin
         $userId=$request->session()->get('admin_user_id');
         if(!$userId||!User::whereKey($userId)->where('is_admin',true)->exists()){
             $request->session()->forget('admin_user_id');
-            return redirect()->guest(route('admin.login'));
+            return redirect()->guest(route('user.login'));
         }
 
-        return $next($request);
+        $response = $next($request);
+        $response->headers->set('Cache-Control', 'private, no-store');
+
+        return $response;
     }
 }

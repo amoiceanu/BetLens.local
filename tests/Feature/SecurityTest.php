@@ -26,13 +26,13 @@ class SecurityTest extends TestCase
         $user=User::factory()->create(['username'=>'admin','is_admin'=>true,'password'=>Hash::make('a-secure-password')]);
 
         $this->post(route('admin.authenticate'), ['username'=>'admin','password' => 'a-secure-password'])
-            ->assertRedirect(route('admin'))
+            ->assertRedirect(route('data-sources'))
             ->assertSessionHas('admin_user_id', $user->id);
 
-        $this->get(route('admin'))->assertOk();
+        $this->get(route('admin'))->assertRedirect(route('data-sources'));
 
         $this->post(route('admin.logout'))
-            ->assertRedirect(route('admin.login'))
+            ->assertRedirect(route('user.login'))
             ->assertSessionMissing('admin_user_id');
     }
 
@@ -51,14 +51,14 @@ class SecurityTest extends TestCase
 
     public function test_admin_routes_redirect_unauthenticated_visitors(): void
     {
-        $this->get(route('admin'))->assertRedirect(route('admin.login'));
+        $this->get(route('admin'))->assertRedirect(route('user.login'));
     }
     public function test_admin_can_sign_in_with_email_or_padded_username(): void
     {
         $user = User::factory()->create(['username' => 'operator-admin', 'email' => 'operator@example.test', 'is_admin' => true, 'password' => Hash::make('a-secure-password')]);
         foreach (['  operator-admin  ', 'operator@example.test'] as $username) {
             $this->post(route('admin.authenticate'), ['username' => $username, 'password' => 'a-secure-password'])
-                ->assertRedirect(route('admin'))
+                ->assertRedirect(route('data-sources'))
                 ->assertSessionHas('admin_user_id', $user->id);
             $this->post(route('admin.logout'))->assertSessionMissing('admin_user_id');
         }
