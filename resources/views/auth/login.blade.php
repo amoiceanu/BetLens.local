@@ -2,9 +2,9 @@
 @section('title', 'Autentificare')
 @section('content')
 <section class="card login">
-    <p class="eyebrow">Cont utilizator</p>
+    <p class="eyebrow">Cont BetLens</p>
     <h1>Autentificare</h1>
-    <p class="muted">Intră în cont pentru a vedea biletele tale.</p>
+    <p class="muted">Intră în cont pentru biletele tale sau pentru administrarea BetLens.</p>
     <form method="post" action="{{ route('user.authenticate') }}">
         @csrf
         <label class="muted form-label" for="email">Email</label>

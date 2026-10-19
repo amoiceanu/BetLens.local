@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Jobs\VerifyDataSource;
+use App\Jobs\RunMindmapImport;
 use App\Models\ApplicationSetting;
 use App\Models\DataSource;
 use App\Models\FootballMatch;
@@ -24,18 +24,23 @@ class AdminMindmapTest extends TestCase
     public function test_all_mindmap_actions_require_admin(): void
     {
         $source = DataSource::first();
-        $this->get(route('admin.mindmap'))->assertRedirect(route('admin.login'));
-        $this->post(route('admin.mindmap.store'))->assertRedirect(route('admin.login'));
-        $this->post(route('admin.mindmap.import', $source))->assertRedirect(route('admin.login'));
+        $this->get(route('admin.mindmap'))->assertRedirect(route('user.login'));
+        $this->post(route('admin.mindmap.store'))->assertRedirect(route('user.login'));
+        $this->post(route('admin.mindmap.import', $source))->assertRedirect(route('user.login'));
+        $this->post(route('admin.mindmap.level.import', ['level' => 1]))->assertRedirect(route('user.login'));
+        $this->post(route('admin.mindmap.import-all')) ->assertRedirect(route('user.login'));
+        $this->get(route('admin.mindmap.source.preview', $source))->assertRedirect(route('user.login'));
+        $this->post(route('admin.mindmap.source.test', $source))->assertRedirect(route('user.login'));
     }
 
-    public function test_empty_imports_show_demo_catalog_and_unavailable_metrics_without_writes(): void
+    public function test_mindmap_shows_six_real_levels_and_unavailable_metrics_without_writes(): void
     {
         $before = DataSource::count();
         $this->withSession(['admin_user_id' => User::factory()->create(['is_admin' => true])->id])->get(route('admin.mindmap'))
-            ->assertOk()->assertSee('Mindmap date BetLens')->assertSee('Ecran complet')->assertSee('mm-fullscreen')->assertSee('Demo')
-            ->assertSee('Sportmonks')->assertSee('NewsAPI')->assertSee('unavailable')
-            ->assertSee('De configurat')->assertDontSee('the-odds-api');
+            ->assertOk()->assertSee('BetLens – Data Mindmap')->assertSee('L1 – Open APIs')->assertSee('L6 – Inteligență predictivă')
+            ->assertSee('id="ic-fullscreen"', false)->assertSee('Afișează harta pe ecran complet')
+            ->assertSee('Sportmonks')->assertSee('GSP.ro · candidat')->assertSee('Niciodată')
+            ->assertSee('The Odds API')->assertDontSee('Date simulate');
         $this->assertSame($before, DataSource::count());
         $this->assertSame(0, SourceRecord::count());
     }
@@ -65,7 +70,7 @@ class AdminMindmapTest extends TestCase
         Http::assertNothingSent();
         $source = DataSource::where('slug', 'statsbomb-open-data')->firstOrFail();
         $this->post(route('admin.mindmap.import', $source))->assertSessionHas('success');
-        Bus::assertDispatchedSync(VerifyDataSource::class, fn ($job) => $job->sourceId === $source->id);
+        Bus::assertDispatched(RunMindmapImport::class, fn ($job) => \App\Models\ImportRun::find($job->runId)?->data_source_id === $source->id);
         $source->update(['verification_url' => 'https://untrusted.example/data']);
         $this->post(route('admin.mindmap.import', $source))->assertSessionHas('warning');
     }

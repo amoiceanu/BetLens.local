@@ -2,15 +2,18 @@
 namespace Tests\Feature;
 use App\Models\GeneratedTicket;
 use App\Models\Operator;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 class TicketGenerationTest extends TestCase
 {
     use RefreshDatabase;
+    private User $ticketUser;
     protected function setUp(): void
     {
         parent::setUp();
-        $this->actingAs(\App\Models\User::factory()->create(['is_admin'=>true]));
+        $this->ticketUser = User::factory()->create(['is_admin'=>false]);
+        $this->actingAs($this->ticketUser);
     }
     public function test_ticket_is_not_fabricated_when_real_recommendations_are_missing(): void
     {
@@ -23,6 +26,7 @@ class TicketGenerationTest extends TestCase
     public function test_a_ticket_can_be_deleted_from_history(): void
     {
         $ticket=GeneratedTicket::create([
+            'user_id'=>$this->ticketUser->id,
             'reference'=>'BL-DELETE1',
             'risk_profile'=>'conservator',
             'total_odds'=>1.5,
@@ -40,6 +44,7 @@ class TicketGenerationTest extends TestCase
     public function test_a_ticket_can_be_marked_as_placed_on_winbet(): void
     {
         $ticket=GeneratedTicket::create([
+            'user_id'=>$this->ticketUser->id,
             'reference'=>'BL-PLACED1',
             'risk_profile'=>'conservator',
             'total_odds'=>1.5,
@@ -57,7 +62,7 @@ class TicketGenerationTest extends TestCase
 
     public function test_each_configured_operator_is_available_as_a_placed_status(): void
     {
-        $ticket=GeneratedTicket::create(['reference'=>'BL-OPERATORS','risk_profile'=>'conservator','total_odds'=>1.5,'combined_probability'=>0.66,'status'=>'pending']);
+        $ticket=GeneratedTicket::create(['user_id'=>$this->ticketUser->id,'reference'=>'BL-OPERATORS','risk_profile'=>'conservator','total_odds'=>1.5,'combined_probability'=>0.66,'status'=>'pending']);
         $response=$this->get(route('tickets.show',$ticket))->assertOk();
         foreach(Operator::orderBy('name')->get() as $operator)$response->assertSee('Plasat pe '.$operator->name);
         $superbet=Operator::where('slug','superbet')->firstOrFail();
@@ -68,6 +73,7 @@ class TicketGenerationTest extends TestCase
     public function test_the_generated_reference_can_be_replaced_with_a_personal_reference(): void
     {
         $ticket=GeneratedTicket::create([
+            'user_id'=>$this->ticketUser->id,
             'reference'=>'BL-AUTO123',
             'risk_profile'=>'conservator',
             'total_odds'=>1.5,
@@ -85,6 +91,7 @@ class TicketGenerationTest extends TestCase
     public function test_match_window_can_be_edited_and_is_shown_in_ticket_history(): void
     {
         $ticket=GeneratedTicket::create([
+            'user_id'=>$this->ticketUser->id,
             'reference'=>'BL-WINDOW1',
             'risk_profile'=>'conservator',
             'total_odds'=>1.5,
@@ -103,7 +110,7 @@ class TicketGenerationTest extends TestCase
 
     public function test_ticket_details_are_saved_together_from_one_form(): void
     {
-        $ticket=GeneratedTicket::create(['reference'=>'BL-ONEFORM','risk_profile'=>'conservator','total_odds'=>1.5,'combined_probability'=>0.66,'status'=>'pending']);
+        $ticket=GeneratedTicket::create(['user_id'=>$this->ticketUser->id,'reference'=>'BL-ONEFORM','risk_profile'=>'conservator','total_odds'=>1.5,'combined_probability'=>0.66,'status'=>'pending']);
         $operator=Operator::where('slug','winbet')->firstOrFail();
 
         $this->get(route('tickets.show',$ticket))
@@ -130,7 +137,7 @@ class TicketGenerationTest extends TestCase
 
     public function test_ticket_history_can_be_sorted_ascending_and_descending_from_the_grid(): void
     {
-        foreach(['BL-ZULU','BL-ALFA'] as $reference)GeneratedTicket::create(['reference'=>$reference,'risk_profile'=>'conservator','total_odds'=>1.5,'combined_probability'=>0.66,'status'=>'pending']);
+        foreach(['BL-ZULU','BL-ALFA'] as $reference)GeneratedTicket::create(['user_id'=>$this->ticketUser->id,'reference'=>$reference,'risk_profile'=>'conservator','total_odds'=>1.5,'combined_probability'=>0.66,'status'=>'pending']);
         $this->get(route('tickets',['sort'=>'reference','direction'=>'asc']))->assertOk()->assertSeeInOrder(['BL-ALFA','BL-ZULU']);
         $this->get(route('tickets',['sort'=>'reference','direction'=>'desc']))->assertOk()->assertSeeInOrder(['BL-ZULU','BL-ALFA']);
     }

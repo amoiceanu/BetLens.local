@@ -28,17 +28,25 @@ class AdminMindmapController extends Controller
     {
         $values = $request->validate([
             'name' => ['required', 'string', 'max:100', 'unique:data_sources,name'],
+            'level' => ['nullable', 'integer', 'between:1,6'],
+            'import_method' => ['nullable', Rule::in(['manual_json', 'manual_csv', 'unsupported'])],
             'group' => ['required', Rule::in(array_keys(SourceCatalog::GROUPS))],
             'type' => ['required', Rule::in(array_keys(SourceCatalog::TYPES))],
             'competition' => ['nullable', 'string', 'max:120'],
             'html_permitted' => ['accepted_if:type,html'],
         ]);
         DB::transaction(function () use ($values) {
+            $level = (int) ($values['level'] ?? match ($values['group']) {
+                'football' => 1, 'romania' => 3, 'news' => 4, 'context' => 5, default => 1,
+            });
+            $method = $values['import_method'] ?? 'unsupported';
             $source = DataSource::create([
                 'name' => $values['name'], 'slug' => Str::slug($values['name']).'-'.Str::lower(Str::random(8)),
                 'category' => SourceCatalog::GROUPS[$values['group']], 'description' => 'Sursă adăugată manual · importator de configurat.',
-                'active' => false, 'status' => 'not_configured',
+                'active' => false, 'status' => 'not_configured', 'import_method' => $method,
+                'import_enabled' => in_array($method, ['manual_json', 'manual_csv'], true),
             ]);
+            $source->levels()->create(['level' => $level]);
             ApplicationSetting::create(['key' => 'mindmap.source.'.$source->id, 'group' => 'mindmap', 'value' => $values]);
         });
 

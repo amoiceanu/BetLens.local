@@ -18,6 +18,7 @@ use App\Models\User;
 use App\Services\FootballStatsService;
 use App\Services\MatchDataService;
 use App\Services\MatchUrlParser;
+use App\Services\Mindmap\SourceCatalog;
 use App\Services\TeamAliasMatcher;
 use App\Services\TicketBuilderService;
 use App\Support\TicketAccess;
@@ -101,9 +102,7 @@ class BetLensController extends Controller
         $bestOdd=null;
         if($bestRecommendation){$provider=$bestRecommendation->factors['bookmaker']??null;if($provider)$bestOdd=Odd::where(['match_id'=>$match->id,'market_id'=>$bestRecommendation->market_id,'selection'=>$bestRecommendation->selection,'provider'=>$provider])->first();}
         $ticketQuery=GeneratedTicket::whereHas('selections.recommendation',fn($query)=>$query->where('match_id',$match->id));
-        if (! TicketAccess::admin($request)) {
-            $ticketQuery->where('user_id', $request->user()?->id ?? 0);
-        }
+        $ticketQuery->where('user_id', TicketAccess::admin($request) ? 0 : ($request->user()?->id ?? 0));
         $backTicket=$request->integer('ticket')?(clone $ticketQuery)->whereKey($request->integer('ticket'))->first():null;
         $backTicket??=$ticketQuery->latest()->first();
         return view('matches.show',['match'=>$match,'homeStats'=>$stats->summary($match->homeTeam),'awayStats'=>$stats->summary($match->awayTeam),'bestRecommendation'=>$bestRecommendation,'alternatives'=>$alternatives,'bestOdd'=>$bestOdd,'backTicket'=>$backTicket]);
@@ -226,20 +225,46 @@ class BetLensController extends Controller
 
     public function dataSources()
     {
-        $sources=DataSource::withCount('records')->get()
+        $sources=DataSource::with('levels')->withCount('records')->get()
             ->sort(function (DataSource $first, DataSource $second): int {
-                $configuredOrder=(int) $second->is_configured <=> (int) $first->is_configured;
+                $configuredOrder=(int) $second->is_verification_configured <=> (int) $first->is_verification_configured;
 
                 return $configuredOrder ?: (strnatcasecmp($first->name, $second->name) ?: $first->id <=> $second->id);
             })->values();
         $weatherCount=\App\Models\MatchWeatherSnapshot::where('provider','open-meteo')->count();
         if($weather=$sources->firstWhere('slug','open-meteo'))$weather->records_count+=$weatherCount;
-        return view('data-sources.index',compact('sources'));
+        $levelSections=collect(SourceCatalog::LEVELS)->map(fn($level,$number)=>[
+            'number'=>$number,
+            'name'=>$level['name'],
+            'description'=>$level['description'],
+            'icon'=>$level['icon'],
+            'sources'=>$sources->filter(fn(DataSource $source)=>$source->levels->contains('level',$number))->values(),
+        ]);
+        $unassignedSources=$sources->filter(fn(DataSource $source)=>$source->levels->isEmpty())->values();
+        return view('data-sources.index',compact('sources','levelSections','unassignedSources'));
+    }
+
+    public function importAudit()
+    {
+        $importAudits=\Illuminate\Support\Facades\DB::table('import_audits')->latest('imported_at')->latest('id')->paginate(50, ['*'], 'audit_page');
+        return view('admin.import-audit',compact('importAudits'));
+    }
+
+    public function destroyImportAudit(int $audit)
+    {
+        $entry=\Illuminate\Support\Facades\DB::table('import_audits')->where('id',$audit)->first();
+        abort_unless($entry,404);
+        abort_if(in_array($entry->overall_status,['queued','running'],true),409,'Așteaptă finalizarea rulării înainte de ștergere.');
+        \Illuminate\Support\Facades\DB::table('import_audits')->where('id',$audit)->delete();
+        return back()->with('success','Intrarea de audit a fost ștearsă. Datele importate nu au fost modificate.');
     }
 
     public function verifyDataSource(DataSource $source)
     {
-        if (!$source->is_configured) {
+        if (in_array($source->import_method, ['unsupported', 'internal_model'], true)) {
+            return back()->with('warning', "{$source->name} nu poate fi verificată ca sursă externă.");
+        }
+        if (!$source->is_verification_configured) {
             return back()->with('warning', "Configurează {$source->name} înainte de verificare.");
         }
         $reserved=DataSource::whereKey($source->id)
@@ -254,7 +279,9 @@ class BetLensController extends Controller
                 'stage'=>'queued','message'=>'Verificarea a fost pusă în coadă.','processed'=>0,
                 'detected'=>null,'new'=>0,'updated'=>0,'unchanged'=>0,'errors'=>0,
                 'started_at'=>now()->toIso8601String(),
+                'steps'=>['queued'=>['started_at'=>now()->toIso8601String(),'message'=>'Verificarea a fost pusă în coadă.']],
             ]]);
+            app(\App\Services\ImportAuditService::class)->syncVerification($source,$runId);
             VerifyDataSource::dispatch($source->id,$runId);
             return response()->json(['run_id'=>$runId,'progress_url'=>route('data-sources.progress',$source)],202);
         }
@@ -274,7 +301,11 @@ class BetLensController extends Controller
             'status'=>$source->status,
             'status_label'=>$source->status_label,
             'stage'=>$progress['stage']??'idle',
+            'steps'=>$progress['steps']??[],
             'message'=>$progress['message']??'Nu există o verificare în curs.',
+            'source_host'=>parse_url($source->verification_url ?? '',PHP_URL_HOST),
+            'http_status'=>$progress['http_status']??null,
+            'response_bytes'=>$progress['response_bytes']??null,
             'processed'=>$progress['processed']??0,
             'detected'=>$progress['detected']??null,
             'new'=>$progress['new']??0,
@@ -285,10 +316,11 @@ class BetLensController extends Controller
             'duration_ms'=>$source->status==='checking'&&isset($progress['started_at'])?
                 (int)\Carbon\Carbon::parse($progress['started_at'])->diffInMilliseconds(now()):$source->last_duration_ms,
             'checked_at'=>$source->last_checked_at?->format('d.m.Y · H:i:s'),
+            'checked_at_iso'=>$source->last_checked_at?->toIso8601String(),
         ])->header('Cache-Control','no-store');
     }
 
-    public function adminLogin(Request $request){$userId=$request->session()->get('admin_user_id');return $userId&&User::whereKey($userId)->where('is_admin',true)->exists()?redirect()->route('admin'):view('admin.login');}
+    public function adminLogin(Request $request){return redirect()->route('user.login');}
     public function adminAuthenticate(Request $request)
     {
         $data=$request->validate(['username'=>'required|string|max:100','password'=>'required|string|max:255']);
@@ -298,13 +330,13 @@ class BetLensController extends Controller
         $request->session()->regenerate();
         Auth::logout();
         $request->session()->put('admin_user_id',$user->id);
-        return redirect()->intended(route('admin'));
+        return redirect()->intended(route('data-sources'));
     }
     public function adminLogout(Request $request)
     {
         $request->session()->invalidate();
         $request->session()->regenerateToken();
-        return redirect()->route('admin.login');
+        return redirect()->route('user.login');
     }
     public function admin(){return view('admin.index',['leagues'=>League::withCount(['teams','matches'])->get(),'markets'=>Market::get(),'settings'=>ApplicationSetting::where('group','risk')->get(),'sources'=>DataSource::whereNotNull('credential_env')->orderBy('name')->get(),'recommendations'=>Recommendation::with(['match.homeTeam','match.awayTeam'])->latest()->take(10)->get()]);}
     public function updateDataSourceKey(Request $request, DataSource $source)

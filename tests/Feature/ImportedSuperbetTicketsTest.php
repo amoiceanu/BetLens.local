@@ -9,6 +9,7 @@ use App\Models\League;
 use App\Models\Market;
 use App\Models\Recommendation;
 use App\Models\Team;
+use App\Models\User;
 use Database\Seeders\SuperbetScreenshotTicketsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -16,16 +17,24 @@ use Tests\TestCase;
 class ImportedSuperbetTicketsTest extends TestCase
 {
     use RefreshDatabase;
+    private User $ticketUser;
     protected function setUp(): void
     {
         parent::setUp();
-        $this->actingAs(\App\Models\User::factory()->create(['is_admin'=>true]));
+        $this->ticketUser = User::factory()->create(['is_admin'=>false]);
+        $this->actingAs($this->ticketUser);
+    }
+
+    private function seedScreenshots(): void
+    {
+        $this->seed(SuperbetScreenshotTicketsSeeder::class);
+        ImportedTicket::whereNull('user_id')->update(['user_id' => $this->ticketUser->id]);
     }
 
     public function test_screenshot_import_is_idempotent_and_visible_in_history(): void
     {
-        $this->seed(SuperbetScreenshotTicketsSeeder::class);
-        $this->seed(SuperbetScreenshotTicketsSeeder::class);
+        $this->seedScreenshots();
+        $this->seedScreenshots();
 
         $this->assertDatabaseCount('imported_tickets', 11);
         $this->assertDatabaseCount('imported_ticket_selections', 11);
@@ -40,7 +49,7 @@ class ImportedSuperbetTicketsTest extends TestCase
             'status'=>'won', 'total_odds'=>1.20, 'stake'=>25, 'payout'=>30, 'currency'=>'RON',
         ]);
 
-        $this->seed(SuperbetScreenshotTicketsSeeder::class);
+        $this->seedScreenshots();
 
         $this->assertDatabaseCount('imported_tickets', 11);
         $this->assertDatabaseHas('imported_tickets', ['id'=>$existing->id, 'reference'=>'891N-1I7VNA', 'total_odds'=>1.20]);
@@ -49,8 +58,9 @@ class ImportedSuperbetTicketsTest extends TestCase
 
     public function test_history_statistics_include_imported_tickets_and_follow_filters(): void
     {
-        $this->seed(SuperbetScreenshotTicketsSeeder::class);
+        $this->seedScreenshots();
         GeneratedTicket::create([
+            'user_id'=>$this->ticketUser->id,
             'reference'=>'BL-PENDING-STATS','risk_profile'=>'conservator','total_odds'=>1.5,
             'combined_probability'=>0.66,'status'=>'pending','created_at'=>'2026-10-17 12:00:00',
         ]);
@@ -65,7 +75,7 @@ class ImportedSuperbetTicketsTest extends TestCase
 
     public function test_lost_ticket_explains_the_failed_selection(): void
     {
-        $this->seed(SuperbetScreenshotTicketsSeeder::class);
+        $this->seedScreenshots();
         $ticket = ImportedTicket::where('reference', '891F-1SZJH2')->firstOrFail();
 
         $this->get(route('tickets.imported.show', $ticket))
@@ -74,7 +84,7 @@ class ImportedSuperbetTicketsTest extends TestCase
 
     public function test_missing_explanation_uses_the_requested_fallback(): void
     {
-        $this->seed(SuperbetScreenshotTicketsSeeder::class);
+        $this->seedScreenshots();
         $ticket = ImportedTicket::where('status', 'lost')->firstOrFail();
         $ticket->selections()->firstOrFail()->update(['failure_reason' => null]);
 
@@ -84,8 +94,9 @@ class ImportedSuperbetTicketsTest extends TestCase
 
     public function test_history_filters_source_status_and_inclusive_date_range(): void
     {
-        $this->seed(SuperbetScreenshotTicketsSeeder::class);
+        $this->seedScreenshots();
         GeneratedTicket::create([
+            'user_id'=>$this->ticketUser->id,
             'reference'=>'BL-FILTER-TEST','risk_profile'=>'conservator','total_odds'=>1.5,
             'combined_probability'=>0.66,'status'=>'lost','created_at'=>'2026-10-17 12:00:00',
         ]);
@@ -101,7 +112,7 @@ class ImportedSuperbetTicketsTest extends TestCase
 
     public function test_date_filters_work_independently_and_reject_reversed_range(): void
     {
-        $this->seed(SuperbetScreenshotTicketsSeeder::class);
+        $this->seedScreenshots();
         $this->get(route('tickets',['to'=>'2026-10-16']))->assertOk()
             ->assertSee('898S-E5F6TA')->assertDontSee('891F-1SZJH2');
         $this->get(route('tickets',['from'=>'2026-10-17']))->assertOk()
@@ -112,7 +123,7 @@ class ImportedSuperbetTicketsTest extends TestCase
 
     public function test_empty_form_fields_do_not_hide_imported_tickets(): void
     {
-        $this->seed(SuperbetScreenshotTicketsSeeder::class);
+        $this->seedScreenshots();
 
         $this->get(route('tickets',['source'=>'import','status'=>'','from'=>'','to'=>'']))
             ->assertOk()->assertSee('891F-1SZJH2')->assertSee('898S-E5F6TA')
@@ -121,7 +132,7 @@ class ImportedSuperbetTicketsTest extends TestCase
 
     public function test_imported_details_use_real_values_and_empty_analytics_states(): void
     {
-        $this->seed(SuperbetScreenshotTicketsSeeder::class);
+        $this->seedScreenshots();
         $ticket=ImportedTicket::where('reference','891F-1SZJH2')->firstOrFail();
 
         $this->get(route('tickets.imported.show',$ticket))->assertOk()
@@ -134,7 +145,7 @@ class ImportedSuperbetTicketsTest extends TestCase
 
     public function test_winning_result_explanation_is_based_on_the_recorded_score(): void
     {
-        $this->seed(SuperbetScreenshotTicketsSeeder::class);
+        $this->seedScreenshots();
         $ticket=ImportedTicket::where('reference','8914-YQPYBM')->firstOrFail();
 
         $this->get(route('tickets.imported.show',$ticket))->assertOk()
@@ -145,7 +156,7 @@ class ImportedSuperbetTicketsTest extends TestCase
 
     public function test_history_drill_down_contains_imported_and_betlens_selections(): void
     {
-        $this->seed(SuperbetScreenshotTicketsSeeder::class);
+        $this->seedScreenshots();
         $league=League::create(['name'=>'Liga Test','slug'=>'ticket-drill-test','code'=>'LT','active'=>true]);
         $home=Team::create(['league_id'=>$league->id,'name'=>'Gazdele Test','short_name'=>'Gazdele']);
         $away=Team::create(['league_id'=>$league->id,'name'=>'Oaspeții Test','short_name'=>'Oaspeții']);
@@ -154,7 +165,7 @@ class ImportedSuperbetTicketsTest extends TestCase
         $recommendation=Recommendation::create(['match_id'=>$match->id,'market_id'=>$market->id,'selection'=>'1X',
             'odds'=>1.45,'model_probability'=>0.7,'implied_probability'=>0.69,'value'=>0.01,
             'confidence'=>'ridicat','score'=>80,'explanation'=>'Test','eligible'=>true]);
-        $ticket=GeneratedTicket::create(['reference'=>'BL-DRILL','risk_profile'=>'conservator','total_odds'=>1.45,'combined_probability'=>0.7,'status'=>'pending']);
+        $ticket=GeneratedTicket::create(['user_id'=>$this->ticketUser->id,'reference'=>'BL-DRILL','risk_profile'=>'conservator','total_odds'=>1.45,'combined_probability'=>0.7,'status'=>'pending']);
         $ticket->selections()->create(['recommendation_id'=>$recommendation->id,'odds_at_creation'=>1.45]);
         $imported=ImportedTicket::where('reference','891F-1SZJH2')->firstOrFail();
 
@@ -166,7 +177,7 @@ class ImportedSuperbetTicketsTest extends TestCase
 
     public function test_pending_unknown_and_multiple_matches_render_without_invented_scores(): void
     {
-        $ticket=ImportedTicket::create(['source'=>'superbet','reference'=>'MULTI-TEST','placed_at'=>'2026-10-17 12:00:00',
+        $ticket=ImportedTicket::create(['user_id'=>$this->ticketUser->id,'source'=>'superbet','reference'=>'MULTI-TEST','placed_at'=>'2026-10-17 12:00:00',
             'status'=>'pending','total_odds'=>2.5,'stake'=>10,'payout'=>null,'currency'=>'RON']);
         $ticket->selections()->create(['position'=>1,'competition'=>'Franța · Ligue 1','kickoff_at'=>'2026-10-18 20:00:00',
             'home_team'=>'Echipă gazdă cu un nume foarte lung','away_team'=>'Echipă oaspete cu nume foarte lung',

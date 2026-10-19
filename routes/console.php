@@ -21,3 +21,4 @@ Schedule::job(new SyncSportmonksAbsencesJob)->dailyAt('05:30')->withoutOverlappi
 Schedule::job(new SyncMatchWeatherJob)->dailyAt('04:30')->withoutOverlapping();
 Schedule::job(new SyncMatchWeatherJob(true))->everyThreeHours()->withoutOverlapping();
 Schedule::job(new ValidateProviderConflictsJob)->hourly()->withoutOverlapping();
+Schedule::call(fn () => app(\App\Services\Mindmap\ImportScheduler::class)->dispatchDue())->name('betlens-import-scheduler')->everyMinute()->withoutOverlapping();
