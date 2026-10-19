@@ -11,7 +11,7 @@ class TeamStatisticsService
     public function rebuild(League $league): int
     {
         $rows = DB::table('matches as m')
-            ->join('match_results as r', 'r.match_id', '=', 'm.id')
+            ->joinSub((new MatchResultHistory)->query(), 'r', 'r.match_id', '=', 'm.id')
             ->where('m.league_id', $league->id)
             ->select('m.*', 'r.home_score', 'r.away_score')
             ->orderBy('m.kickoff_at')

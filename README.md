@@ -111,3 +111,29 @@ Indicatorii au proveniență și timestamp de observare:
 **Rulează import** este disponibil în drawer numai pentru adaptoarele existente cu endpoint exact aprobat: API-Football (starea API), football-data.org (competiții), OpenLigaDB și StatsBomb Open Data. Endpointurile adăugate arbitrar nu sunt executate. Lipsa acreditărilor blochează importul înainte de apelul extern. Importatoarele RSS/Atom, HTML cu permisiune explicită, CSV încărcat manual, corectare manuală și un API REST public necesită implementări separate; pagina nu simulează aceste operații. Sursele neconfigurate rămân disponibile în catalog pentru planificare.
 
 Verificări: `php artisan test`, `npm run build`; testele specifice sunt în `tests/Feature/AdminMindmapTest.php` și nu apelează servicii externe.
+
+## Compararea rezultatelor cu predicțiile
+
+Migrația `2026_10_19_000000_create_game_comparison_tables.php` creează exclusiv trei tabele noi. În toate, `game_id` referă **`matches.id`**, modelul existent fiind `FootballMatch`; nu există o tabelă `games` suplimentară.
+
+- `game_actual_results` / `GameActualResult`: un singur rezultat per meci, scoruri și cornere întregi nullable, `match_status`, `result_updated_at` și timestamp-uri Laravel.
+- `betlens_predictions` / `BetlensPrediction`: snapshoturi multiple per meci, cu `predicted_at` obligatoriu și `model_version` nullable.
+- `external_platform_predictions` / `ExternalPlatformPrediction`: snapshoturi multiple per meci/platformă, `platform_name` obligatoriu și `source_prediction_id` nullable. ID-ul extern nu este unic: aceeași predicție externă poate avea observații la momente diferite.
+
+Cele 12 câmpuri comune au aceleași nume în toate tabelele: `home_score`, `away_score`, `home_score_ht`, `away_score_ht`, `home_score_2h`, `away_score_2h`, `home_corners`, `away_corners`, `home_corners_ht`, `away_corners_ht`, `home_corners_2h`, `away_corners_2h`. În predicții sunt `DECIMAL(7,2) NULL`; probabilitățile 1X2 sunt `DECIMAL(7,6) NULL`, iar cotele estimate sunt `DECIMAL(10,4) NULL`. Nu se transformă automat cotele în probabilități și nu se presupune că o valoare lipsă este zero. Salvările Eloquent blochează editarea predicțiilor deja existente dacă meciul este marcat `finished` în `matches` sau în rezultatul real; importul retrospectiv de snapshoturi distincte rămâne posibil.
+
+`GamePrediction::rules()` este reutilizabil pentru validarea intrărilor, iar salvările Eloquent validează automat probabilitățile între 0 și 1, inclusiv capetele intervalului. Baza de date protejează și scrierile directe: constrângeri CHECK pentru MySQL/MariaDB, respectiv trigger-e echivalente pentru SQLite. Nu este impusă o sumă de 1 pentru probabilități parțial furnizate. Câmpurile zecimale sunt expuse de Eloquent ca string-uri, pentru păstrarea preciziei.
+
+Relații:
+
+```php
+$game->load(['actualResult', 'betlensPredictions', 'externalPlatformPredictions']);
+$game->betlensPredictions()->orderByDesc('predicted_at')->get();
+$game->externalPlatformPredictions()->where('platform_name', 'Forebet')->orderByDesc('predicted_at')->get();
+```
+
+Fiecare copil are relația `game()`. Indexurile acoperă meciul, momentul predicției și platforma. Ștergerea meciurilor cu rezultate sau predicții este restricționată pentru a păstra istoricul.
+
+Importatorul OpenLigaDB scrie de acum rezultatele numai în `game_actual_results`, fără să modifice snapshoturile de predicții. Datele nespecificate de furnizor rămân `NULL`; inclusiv statisticile reprizei a doua și cornerele nu sunt deduse. `match_results` rămâne intactă pentru istoricul existent. `MatchResultHistory` permite analizelor să citească acel istoric când nu există un rezultat nou pentru meci; dacă există, este preferat exclusiv rezultatul nou, finalizat și cu ambele scoruri disponibile. Nu se copiază sau rescriu rezultate istorice prin migrație. Generarea/importul noilor snapshoturi de predicții se poate conecta separat la aceste modele.
+
+Verificări: `php artisan test --filter=GameComparisonTest` și `php artisan test`, în baza SQLite în memorie configurată de `phpunit.xml`. Pentru aplicarea exclusivă a acestei migrații, după verificarea conexiunii destinație: `php artisan migrate --path=database/migrations/2026_10_19_000000_create_game_comparison_tables.php`. Nu folosi `migrate:fresh` sau `migrate:refresh` pe o bază cu date existente.

@@ -1,11 +1,11 @@
 <?php
 namespace App\Services;
 use App\Models\FootballMatch;
+use App\Models\GameActualResult;
 use App\Models\League;
 use App\Models\Season;
 use App\Models\Team;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 class OpenLigaDataImporter
 {
@@ -25,7 +25,18 @@ class OpenLigaDataImporter
         $home=$this->team($league,$item['team1'],$metrics);$away=$this->team($league,$item['team2'],$metrics);$kickoff=Carbon::parse($item['matchDateTimeUTC']??$item['matchDateTime'])->setTimezone(config('app.timezone'));
         $externalId='openligadb:'.$item['matchID'];$existing=FootballMatch::where('external_id',$externalId)->first();$attributes=['league_id'=>$league->id,'season_id'=>$season->id,'home_team_id'=>$home->id,'away_team_id'=>$away->id,'kickoff_at'=>$kickoff,'status'=>($item['matchIsFinished']??false)?'finished':'scheduled','venue'=>$item['location']['locationStadium']??$item['location']['locationCity']??null];
         $match=FootballMatch::updateOrCreate(['external_id'=>$externalId],$attributes);$existing?$metrics['matches_updated']++:$metrics['matches_new']++;
-        if($item['matchIsFinished']??false){$result=collect($item['matchResults']??[])->sortByDesc('resultOrderID')->first();if($result){DB::table('match_results')->updateOrInsert(['match_id'=>$match->id],['home_score'=>(int)$result['pointsTeam1'],'away_score'=>(int)$result['pointsTeam2'],'details'=>json_encode(['provider'=>'openligadb','results'=>$item['matchResults']??[]],JSON_UNESCAPED_UNICODE),'created_at'=>now(),'updated_at'=>now()]);$metrics['results']++;}}
+        $values = ['match_status' => $attributes['status'], 'result_updated_at' => now()];
+        $results = collect($item['matchResults'] ?? []);
+        // OpenLigaDB: resultTypeID 1 = half time, 2 = full time. Never treat missing scores as 0.
+        $fullTime = $results->firstWhere('resultTypeID', 2);
+        $halfTime = $results->firstWhere('resultTypeID', 1);
+        foreach (['home' => 'pointsTeam1', 'away' => 'pointsTeam2'] as $side => $key) {
+            if ($fullTime !== null && isset($fullTime[$key])) $values[$side.'_score'] = $fullTime[$key];
+            if ($halfTime !== null && isset($halfTime[$key])) $values[$side.'_score_ht'] = $halfTime[$key];
+        }
+        GameActualResult::updateOrCreate(['game_id' => $match->id], $values);
+        if ($fullTime !== null) $metrics['results']++;
+
     }
     private function team(League $league,array $item,array &$metrics): Team
     {
