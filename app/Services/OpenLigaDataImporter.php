@@ -10,6 +10,98 @@ use Illuminate\Support\Facades\Http;
 class OpenLigaDataImporter
 {
     private const LEAGUES=['premier-league'=>'pl','la-liga'=>'la1','bundesliga'=>'bl1','champions-league'=>'ucl'];
+
+    /** Import only future fixtures; repeated runs update fixtures but keep prediction snapshots. */
+    public function importUpcomingMatches(int $days = 30, ?callable $progress = null): array
+    {
+        $days = max(1, min(90, $days));
+        $seasonYear = now()->month >= 7 ? now()->year : now()->year - 1;
+        $cutoff = now()->copy()->addDays($days);
+        $metrics = ['leagues' => 0, 'read' => 0, 'matches_new' => 0, 'matches_updated' => 0, 'matches_unchanged' => 0,
+            'predictions_new' => 0, 'predictions_unchanged' => 0, 'errors' => []];
+
+        foreach (self::LEAGUES as $slug => $shortcut) {
+            $league = League::where('slug', $slug)->first();
+            if (! $league) continue;
+            $progress && $progress('connecting', $league->name, $metrics);
+            $started = now();
+            $beforeNew = $metrics['matches_new'];
+            $beforeUpdated = $metrics['matches_updated'];
+            $beforeUnchanged = $metrics['matches_unchanged'];
+            $season = null;
+            try {
+                $response = Http::acceptJson()->timeout(30)->retry(2, 300, throw: false)
+                    ->get("https://api.openligadb.de/getmatchdata/{$shortcut}/{$seasonYear}");
+                if (! $response->successful() || ! is_array($response->json()) || ! array_is_list($response->json())) {
+                    throw new \RuntimeException('Răspuns OpenLigaDB invalid sau HTTP '.$response->status());
+                }
+                $items = $response->json();
+                $metrics['leagues']++;
+                $metrics['read'] += count($items);
+                $progress && $progress('writing', $league->name, $metrics);
+                $season = Season::firstOrCreate(
+                    ['league_id' => $league->id, 'name' => $seasonYear.'/'.substr((string) ($seasonYear + 1), -2)],
+                    ['starts_at' => "$seasonYear-07-01", 'ends_at' => ($seasonYear + 1).'-06-30', 'current' => true]
+                );
+                foreach ($items as $index => $item) {
+                    if (! is_array($item) || empty($item['matchID']) || empty($item['matchDateTimeUTC'] ?? $item['matchDateTime'] ?? null)
+                    ) continue;
+                    if ($item['matchIsFinished'] ?? false) {
+                        if (FootballMatch::where('external_id', 'openligadb:'.$item['matchID'])->exists()) {
+                            $updateMetrics = ['leagues' => 0, 'teams' => 0, 'matches_new' => 0,
+                                'matches_updated' => 0, 'results' => 0, 'errors' => []];
+                            $this->importMatch($league, $season, $item, $updateMetrics);
+                            $metrics['matches_updated'] += $updateMetrics['matches_updated'];
+                        }
+                        continue;
+                    }
+                    $kickoff = Carbon::parse($item['matchDateTimeUTC'] ?? $item['matchDateTime']);
+                    if ($kickoff->lte(now()) || $kickoff->gt($cutoff)) continue;
+                    $this->importUpcomingMatch($league, $season, $item, $metrics);
+                    if ($index % 25 === 0) $progress && $progress('writing', $league->name, $metrics);
+                }
+                $progress && $progress('league_done', $league->name, $metrics);
+                app(ImportAuditService::class)->record('openligadb', 'upcoming_matches', 'healthy', [
+                    'league_id' => $league->id, 'season_id' => $season->id, 'started_at' => $started,
+                    'read' => count($items), 'new' => $metrics['matches_new'] - $beforeNew,
+                    'updated' => $metrics['matches_updated'] - $beforeUpdated,
+                    'unchanged' => $metrics['matches_unchanged'] - $beforeUnchanged, 'errors' => 0,
+                ], 'Import meciuri viitoare încheiat.', null, 'ImportUpcomingMatches');
+            } catch (\Throwable $e) {
+                $metrics['errors'][] = $league->name.': '.$e->getMessage();
+                $progress && $progress('league_error', $league->name, $metrics);
+                app(ImportAuditService::class)->record('openligadb', 'upcoming_matches', 'failed', [
+                    'league_id' => $league->id, 'season_id' => $season?->id,
+                    'started_at' => $started, 'errors' => 1,
+                ], 'Importul meciurilor viitoare a eșuat.', null, 'ImportUpcomingMatches');
+            }
+        }
+        return $metrics;
+    }
+
+    private function importUpcomingMatch(League $league, Season $season, array $item, array &$metrics): void
+    {
+        if (empty($item['team1']['teamId']) || empty($item['team2']['teamId'])) return;
+        $externalId = 'openligadb:'.$item['matchID'];
+        $match = FootballMatch::where('external_id', $externalId)->first();
+        if ($match?->status === 'finished' || $match?->actualResult?->match_status === 'finished') return;
+        $teamMetrics = ['teams' => 0];
+        $home = $this->team($league, $item['team1'], $teamMetrics);
+        $away = $this->team($league, $item['team2'], $teamMetrics);
+        $attributes = ['league_id' => $league->id, 'season_id' => $season->id,
+            'home_team_id' => $home->id, 'away_team_id' => $away->id,
+            'kickoff_at' => Carbon::parse($item['matchDateTimeUTC'] ?? $item['matchDateTime'])->setTimezone(config('app.timezone')),
+            'status' => 'scheduled', 'venue' => $item['location']['locationStadium'] ?? $item['location']['locationCity'] ?? null];
+        $match = FootballMatch::updateOrCreate(['external_id' => $externalId], $attributes);
+        if ($match->wasRecentlyCreated) $metrics['matches_new']++;
+        elseif ($match->wasChanged()) $metrics['matches_updated']++;
+        else $metrics['matches_unchanged']++;
+        GameActualResult::firstOrCreate(['game_id' => $match->id], ['match_status' => 'scheduled']);
+
+        $prediction = app(BetlensPredictionWriter::class)->write($match);
+        if ($prediction === 'created') $metrics['predictions_new']++;
+        elseif ($prediction === 'unchanged') $metrics['predictions_unchanged']++;
+    }
     public function importCurrentSeason(int $season=2026): array
     {
         $metrics=['leagues'=>0,'teams'=>0,'matches_new'=>0,'matches_updated'=>0,'results'=>0,'errors'=>[]];

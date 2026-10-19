@@ -39,6 +39,9 @@ Route::middleware('admin.auth')->group(function(){
     Route::patch('/admin/acoperire/neconcordante/{discrepancy}', [\App\Http\Controllers\AdminCoverageController::class,'review'])->middleware('throttle:30,1')->name('admin.coverage.review');
 
     Route::get('/admin/simulator', [AdminSimulatorController::class, 'index'])->name('admin.simulator');
+    Route::get('/admin/meciuri-viitoare', [\App\Http\Controllers\AdminUpcomingMatchesController::class, 'index'])->name('admin.upcoming-matches');
+    Route::post('/admin/meciuri-viitoare/import', [\App\Http\Controllers\AdminUpcomingMatchesController::class, 'import'])->middleware('throttle:2,1')->name('admin.upcoming-matches.import');
+    Route::get('/admin/meciuri-viitoare/import/{run}/progress', [\App\Http\Controllers\AdminUpcomingMatchesController::class, 'progress'])->middleware('throttle:120,1')->name('admin.upcoming-matches.progress');
     Route::get('/performanta',fn()=>redirect()->route('data-sources'))->name('performance');
     Route::get('/operatori',[OperatorController::class,'index'])->name('operators.index');
     Route::post('/operatori',[OperatorController::class,'store'])->name('operators.store');

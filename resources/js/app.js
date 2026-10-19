@@ -3,6 +3,7 @@ import './mindmap';
 import './import-center';
 import './source-progress';
 import './source-tabs';
+import './upcoming-import';
 
 for (const form of document.querySelectorAll('[data-coverage-filter]')) {
     form.addEventListener('submit', () => { const status = form.querySelector('[data-loading]'); if (status) status.hidden = false; });

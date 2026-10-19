@@ -8,6 +8,20 @@ use Illuminate\Support\Facades\DB;
 
 class ImportAuditService
 {
+    public function markUntrackedVerification(DataSource $source): void
+    {
+        if (! $source->verification_run_id) return;
+        DB::table('import_audits')
+            ->where('verification_run_id', $source->verification_run_id)
+            ->whereIn('overall_status', ['queued', 'running'])
+            ->update([
+                'status' => 'untracked', 'overall_status' => 'warning',
+                'finished_at' => now(), 'errors_count' => 1,
+                'message' => 'Verificarea a rulat în afara procesului care transmite progresul. Rezultatul importului nu poate fi atribuit sigur acestei rulări.',
+                'updated_at' => now(),
+            ]);
+    }
+
     public function syncVerification(DataSource $source, string $runId): void
     {
         $progress = $source->verification_progress ?? [];

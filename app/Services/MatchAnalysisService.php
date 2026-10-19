@@ -138,6 +138,25 @@ class MatchAnalysisService
         $history = $this->history($match->league, $match->kickoff_at);
         if ($history['played'] === 0) return null;
 
+        return $this->simulationFromHistory($match, $history);
+    }
+
+    /** One historical query per league when generating snapshots for future fixtures. */
+    public function simulateUpcomingBatch(League $league, Collection $matches): array
+    {
+        $history = $this->history($league, now());
+        if ($history['played'] === 0) return [];
+
+        $estimates = [];
+        foreach ($matches as $match) {
+            $estimates[$match->id] = $this->simulationFromHistory($match, $history);
+        }
+
+        return $estimates;
+    }
+
+    private function simulationFromHistory(FootballMatch $match, array $history): array
+    {
         $values = $this->probabilities($match, $history);
 
         return [
