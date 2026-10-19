@@ -17,7 +17,9 @@ class OperatorsTest extends TestCase
 
     public function test_default_operators_are_visible(): void
     {
-        $this->get(route('operators.index'))->assertOk()->assertSee('Winbet')->assertSee('Superbet');
+        $this->get(route('operators.index'))->assertOk()->assertSee('Winbet')->assertSee('Superbet')
+            ->assertSee('<table class="operator-table">',false)
+            ->assertSee('form="operator-update-',false);
     }
 
     public function test_an_operator_can_be_added_edited_and_deleted(): void

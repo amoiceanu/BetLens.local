@@ -17,7 +17,7 @@ php artisan migrate --seed
 
 ## Baza de date DigitalOcean
 
-Configurația locală din `.env` rămâne pe `127.0.0.1` / `betlens`. Pe droplet, modifică **doar** fișierul `.env` de acolo pentru baza managed `BetLens-Prod`:
+Fiecare instalare își citește conexiunea din propriul `.env`. În instalarea curentă, `.env` local poate indica și baza managed `BetLens-Prod`; verifică ținta înainte de migrare sau import. Pe droplet, configurează propriul `.env` pentru baza managed:
 
 ```env
 DB_CONNECTION=mysql
@@ -44,7 +44,7 @@ Comanda solicită utilizatorul, emailul și parola în mod interactiv; parola nu
 
 - Dashboard și Meciuri sunt publice, fără cont. Generarea și salvarea unui bilet cer autentificare.
 - Utilizatorii își creează cont la `/cont/inregistrare`, intră la `/cont/login` și văd doar propriile bilete la `/bilete`.
-- Performanță, Operatori, Surse de date și Admin necesită cont de administrator. Formularul `/admin/login` rămâne public pentru autentificare; accesul la funcțiile Admin este protejat.
+- Administratorii folosesc același formular `/cont/login` și sunt direcționați către `/admin`. Adresa veche `/admin/login` redirecționează la formularul comun; accesul la funcțiile Admin rămâne protejat. Conturile admin nu văd „Biletele mele” și nu pot accesa sau genera bilete, inclusiv prin URL direct.
 
 După actualizare, rulează `php artisan migrate --force`. Biletele existente fără `user_id` rămân vizibile doar administratorului, până când sunt atribuite explicit unui utilizator; nu sunt expuse automat tuturor conturilor noi.
 
@@ -113,6 +113,12 @@ GitHub Actions rulează testele PHPUnit și scenariile Gherkin pe fiecare pull r
 
 ## Expunere publică
 
+## Auditul importurilor
+
+Migrarea `import_audits` și extensia ei se aplică pe conexiunea `DB_*` configurată: `php artisan migrate --force`. Pagina de admin `/admin/audit-importuri` (disponibilă din meniul Admin) arată ora rulării, jobul, furnizorul, instanța de execuție, înregistrările noi/actualizate/șterse și statusul general. Același tabel rămâne și în „Sursa datelor”. `Importate` reprezintă noi + actualizate, nu toate rândurile detectate la furnizor. Istoricul anterior extensiei rămâne în tabel, cu instanța marcată „Necunoscut”.
+
+Setează `BETLENS_IMPORT_EXECUTION_SOURCE=Laravel-local` pe PC, `Laravel-DO` pe droplet sau `Function-DO` în mediul unei DigitalOcean Function care folosește serviciul `ImportAuditService`. Dacă variabila lipsește, aplicația folosește `Laravel-DO` când `APP_ENV=production`, altfel `Laravel-local`. O Function separată care nu folosește acest cod trebuie să trimită ea însăși evenimentul de audit; simpla schimbare a bazei de date nu poate identifica execuția unei funcții externe.
+
 În producție folosește HTTPS și configurează cel puțin:
 
 ```env
@@ -131,18 +137,37 @@ Rezultatele istorice nu garantează performanța viitoare, iar BetLens nu promit
 
 ## Mindmap date BetLens (admin)
 
-Pagina `/admin/mindmap` este accesibilă prin **Admin → Mindmap date**, cu aceeași sesiune de administrator. Nu necesită migrații noi, servicii externe sau o bibliotecă de grafuri. Vizualizarea folosește SVG, CSS și JavaScript simplu în buildul Vite existent.
+Pagina `/admin/mindmap` este centrul de import pentru administrator. Are șase niveluri L1–L6, filtre pentru ligă/sezon/sursă/status, configurare per sursă, import individual/de nivel/global, previzualizare a înregistrărilor stocate, stare prin polling și istoric. Sursele sunt citite din `data_sources` + `data_source_levels`; candidatele fără adaptor sunt marcate **Nesuportat**, fără date sau sincronizări fictive. Selectorul de ligă afișează acoperirea declarată în `data_source_competitions`. Adaptoarele externe existente nu sunt încă capabile de import limitat la liga selectată, așadar butoanele lor sunt dezactivate în acel context. L6 este un procesor intern de recalculare, nu un API extern.
 
-Catalogul de integrare este separat în `App\Services\Mindmap\SourceCatalog`; `MindmapData` construiește un snapshot exclusiv din modelele și jurnalele existente. În absența meciurilor și înregistrărilor importate, nodurile demonstrative și fiecare indicator din panou sunt etichetate **Demo**. Vizualizarea Demo nu inserează meciuri, sincronizări sau statistici fictive în bază. Sursele adăugate prin modal sunt salvate în `data_sources`, inactive, cu metadate în `application_settings` (grupul `mindmap`). Nu se solicită și nu se afișează chei API.
+Migrarea `2026_10_18_000002_create_mindmap_import_management_tables.php` adaugă `data_source_levels`, `data_source_competitions`, `import_runs`, `import_documents`, `source_field_mappings` și setări de import în `data_sources`. `import_runs` păstrează fiecare execuție nouă pornită din Mindmap; `import_audits` rămâne jurnalul general al tuturor adaptoarelor existente. Răspunsurile brute disponibile și fișierele încărcate sunt stocate privat prin Laravel Storage, cu checksum și cale în `import_documents`. Pentru feedurile speciale care nu expun răspunsul brut către orchestrator, documentul nu este inventat.
 
-Indicatorii au proveniență și timestamp de observare:
+Adaptoarele aprobate existente sunt folosite numai la endpointurile deja cunoscute de cod. Pentru surse noi, administratorul poate configura import manual JSON/CSV, fără schimbare de cod; fișierul este salvat privat și procesat asincron în `source_records`, cu deduplicare după identificator și checksum. Mapările de câmp sunt aplicate în payloadul standardizat `_mapped`, dar nu suprascriu identitatea, ora sau rezultatul meciurilor din tabelele canonice. RSS, scraping HTML și import generic din URL arbitrar nu sunt activate: ar necesita validarea permisiunii, a acoperirii și protecții SSRF suplimentare. **Testează conexiunea** face doar un apel la endpointul aprobat; nu salvează date sportive.
 
-- Acoperire: câmpuri completate / câmpuri așteptate pentru echipa gazdă, echipa oaspete, ora și stadionul meciurilor din competiția/sezonul selectate. Nu reprezintă acoperirea calendarului oficial, care nu este disponibil ca numitor.
-- Calitate: înregistrări cu identificator extern, payload nenul și checksum SHA-256 valid / înregistrările surselor afișate. Acesta este un control de integritate, nu o certificare a rezultatelor sportive.
-- Contradicțiile checksum/payload sunt marcate `conflict`. Reconcilierea semantică între furnizori nu există încă și este `unavailable`, la fel ca progresul procentual fără un total de lucru cunoscut.
-- Importurile de astăzi sunt rulările `source_sync` cu status `healthy`, conform fusului orar al aplicației. O verificare API reușită nu implică automat import de meciuri.
-- Costul API rămâne **De configurat** până la introducerea planurilor tarifare. Următoarea fereastră este estimată din programarea orară existentă; nu dovedește că schedulerul rulează.
+Pornire locală (în terminalul integrat; fără ferestre separate):
 
-**Rulează import** este disponibil în drawer numai pentru adaptoarele existente cu endpoint exact aprobat: API-Football (starea API), football-data.org (competiții), OpenLigaDB și StatsBomb Open Data. Endpointurile adăugate arbitrar nu sunt executate. Lipsa acreditărilor blochează importul înainte de apelul extern. Importatoarele RSS/Atom, HTML cu permisiune explicită, CSV încărcat manual, corectare manuală și un API REST public necesită implementări separate; pagina nu simulează aceste operații. Sursele neconfigurate rămân disponibile în catalog pentru planificare.
+```bash
+php artisan migrate --force
+php artisan queue:work database --tries=3
+php artisan schedule:work
+```
 
-Verificări: `php artisan test`, `npm run build`; testele specifice sunt în `tests/Feature/AdminMindmapTest.php` și nu apelează servicii externe.
+Pe droplet, workerul și schedulerul trebuie administrate ca servicii persistente. Dacă sunt lansate manual în background, redirecționează stdout/stderr în loguri și păstrează PID-ul pentru oprire. Nu rula mai multe instanțe de scheduler. `ImportScheduler` verifică în fiecare minut frecvența setată per sursă și nu reintroduce un job deja în coadă sau în curs. Configurația locală folosește `QUEUE_CONNECTION=database` și `BETLENS_RAW_IMPORT_DISK=local`. Pentru Spaces se poate seta un disk S3 compatibil (`BETLENS_RAW_IMPORT_DISK=s3` și variabilele `AWS_*`), după instalarea adaptorului Flysystem S3; Redis/Valkey este opțional și nu păstrează singur datele persistente.
+
+Limitări: acoperirea pe competiție nu este dedusă din simpla existență a unei surse; importul specific ligii necesită adaptoare și ID-uri externe verificate. Datele meteo se corelează prin integrarea Open-Meteo existentă, nu prin țara ligii. Indicatorul de calitate verifică structura și checksumul payloadurilor, nu adevărul sportiv. Istoricul `import_runs` începe la migrarea acestei funcționalități; importurile mai vechi rămân în `import_audits` / `data_sync_logs`.
+
+### API-Football L1 prin DigitalOcean Function
+
+Setează `BETLENS_API_FOOTBALL_FUNCTION_URL` și `BETLENS_API_FOOTBALL_FUNCTION_TOKEN` doar în mediul Laravel. Headerul `X-Require-Whisk-Auth` este trimis exclusiv din backend. După `php artisan migrate --force`, Mindmap oferă separat **Verifică acum** (apel fără scrieri sportive) și **Importă acum** (job asincron). Funcția furnizează lista `records` cu competiții și sezoane; importul păstrează numai România în `source_records`, legând fiecare sezon de competiția sa. Identificatorii externi rămân separați de ID-urile interne, iar unicitatea existentă `(data_source_id, external_key)` previne duplicatele. Sunt excluse fixtures, jucătorii, clasamentele și cotele.
+
+```bash
+php artisan betlens:import-api-football-l1 --probe   # verifică răspunsul, fără scriere sportivă
+php artisan betlens:import-api-football-l1           # pune un import în coadă
+php artisan queue:work database --queue=betlens-api-football-l1 --tries=1 --timeout=180
+php artisan betlens:import-api-football-l1 --latest  # status și număr de înregistrări
+```
+
+Workerul acestei cozi trebuie să ruleze codul Laravel actualizat. O instanță veche de pe droplet poate prelua și eșua joburi necunoscute dacă ascultă aceeași coadă; coada dedicată evită acest lucru. Pentru funcționare continuă după repornire, configurează workerul ca serviciu persistent pe mediul actualizat. Nu porni două importuri simultane pentru aceeași sursă; `ImportManager` respinge a doua rulare activă. Erorile rămân în `import_runs` și `import_audits` fără URL sau token.
+
+# Simulator admin
+
+Pagina `/admin/simulator` compară probabilitățile 1/X/2 pentru un meci cu nivelurile L1–L6 activate/dezactivate. Este disponibilă numai contului de admin și numai când conexiunea activă este DigitalOcean `BetLens-Prod` (testele folosesc SQLite izolat). L1 calculează frecvențele din rezultatele anterioare ale ligii, L2 normalizează cotele 1/X/2 complete capturate înaintea meciului, iar L6 aplică modelul Poisson existent pe istoricul anterior meciului. Combinația model/cote este o medie 50/50 pentru explorare, nu o recomandare oficială. L3–L5 arată datele disponibile, dar nu schimbă șansele 1/X/2 fără o regulă calibrată. Simularea este doar de citire și nu creează recomandări.

@@ -24,9 +24,9 @@ class TeamAliasTest extends TestCase
 
         $this->get('/meciuri?'.http_build_query(['match_url' => $url]))
             ->assertOk()->assertViewHas('matches', fn ($matches) => $matches->isEmpty());
-        $this->get(route('admin.aliases.index'))->assertRedirect(route('admin.login'));
+        $this->get(route('admin.aliases.index'))->assertRedirect(route('user.login'));
         $this->post(route('admin.aliases.store'), ['team_id' => $home->id, 'provider' => 'winbet', 'alias' => 'The Magpies'])
-            ->assertRedirect(route('admin.login'));
+            ->assertRedirect(route('user.login'));
 
         $admin = User::factory()->create(['is_admin' => true]);
         $this->withSession(['admin_user_id' => $admin->id]);

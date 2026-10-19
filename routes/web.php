@@ -3,6 +3,8 @@
 use App\Http\Controllers\BetLensController;
 use App\Http\Controllers\OperatorController;
 use App\Http\Controllers\TeamAliasController;
+use App\Http\Controllers\AdminImportCenterController;
+use App\Http\Controllers\AdminSimulatorController;
 use App\Http\Controllers\UserAuthController;
 use Illuminate\Support\Facades\Route;
 
@@ -28,18 +30,30 @@ Route::middleware('ticket.auth')->group(function(){
 Route::get('/admin/login',[BetLensController::class,'adminLogin'])->name('admin.login');
 Route::post('/admin/login',[BetLensController::class,'adminAuthenticate'])->middleware('throttle:admin-login')->name('admin.authenticate');
 Route::middleware('admin.auth')->group(function(){
-    Route::get('/performanta',[BetLensController::class,'performance'])->name('performance');
+    Route::get('/admin/simulator', [AdminSimulatorController::class, 'index'])->name('admin.simulator');
+    Route::get('/performanta',fn()=>redirect()->route('data-sources'))->name('performance');
     Route::get('/operatori',[OperatorController::class,'index'])->name('operators.index');
     Route::post('/operatori',[OperatorController::class,'store'])->name('operators.store');
     Route::patch('/operatori/{operator}',[OperatorController::class,'update'])->name('operators.update');
     Route::delete('/operatori/{operator}',[OperatorController::class,'destroy'])->name('operators.destroy');
     Route::get('/surse-date',[BetLensController::class,'dataSources'])->name('data-sources');
+    Route::get('/admin/audit-importuri',[BetLensController::class,'importAudit'])->name('admin.import-audit');
+    Route::delete('/admin/audit-importuri/{audit}',[BetLensController::class,'destroyImportAudit'])->name('admin.import-audit.destroy');
     Route::post('/surse-date/{source}/verifica',[BetLensController::class,'verifyDataSource'])->middleware('throttle:10,1')->name('data-sources.verify');
     Route::get('/surse-date/{source}/progres',[BetLensController::class,'dataSourceProgress'])->middleware('throttle:120,1')->name('data-sources.progress');
-    Route::get('/admin/mindmap', [\App\Http\Controllers\AdminMindmapController::class, 'index'])->name('admin.mindmap');
+    Route::get('/admin/mindmap', [AdminImportCenterController::class, 'index'])->name('admin.mindmap');
     Route::post('/admin/mindmap/sources', [\App\Http\Controllers\AdminMindmapController::class, 'store'])->middleware('throttle:10,1')->name('admin.mindmap.store');
-    Route::post('/admin/mindmap/sources/{source}/import', [\App\Http\Controllers\AdminMindmapController::class, 'import'])->middleware('throttle:5,1')->name('admin.mindmap.import');
-    Route::get('/admin',[BetLensController::class,'admin'])->name('admin');
+    Route::post('/admin/mindmap/sources/{source}/import', [AdminImportCenterController::class, 'import'])->middleware('throttle:5,1')->name('admin.mindmap.import');
+    Route::post('/admin/mindmap/levels/{level}/import', [AdminImportCenterController::class, 'importLevel'])->middleware('throttle:5,1')->name('admin.mindmap.level.import');
+    Route::post('/admin/mindmap/import-all', [AdminImportCenterController::class, 'importAll'])->middleware('throttle:5,1')->name('admin.mindmap.import-all');
+    Route::post('/admin/mindmap/sources/{source}/upload', [AdminImportCenterController::class, 'upload'])->middleware('throttle:5,1')->name('admin.mindmap.upload');
+    Route::put('/admin/mindmap/sources/{source}', [AdminImportCenterController::class, 'update'])->name('admin.mindmap.source.update');
+    Route::post('/admin/mindmap/sources/{source}/mapping', [AdminImportCenterController::class, 'mapField'])->name('admin.mindmap.source.mapping');
+    Route::post('/admin/mindmap/sources/{source}/competition', [AdminImportCenterController::class, 'mapCompetition'])->name('admin.mindmap.source.competition');
+    Route::post('/admin/mindmap/sources/{source}/test', [AdminImportCenterController::class, 'testConnection'])->middleware('throttle:5,1')->name('admin.mindmap.source.test');
+    Route::get('/admin/mindmap/sources/{source}/preview', [AdminImportCenterController::class, 'preview'])->name('admin.mindmap.source.preview');
+    Route::get('/admin/mindmap/runs/{run}/progress', [AdminImportCenterController::class, 'progress'])->name('admin.mindmap.run.progress');
+    Route::get('/admin',fn()=>redirect()->route('data-sources'))->name('admin');
     Route::post('/admin/logout',[BetLensController::class,'adminLogout'])->name('admin.logout');
     Route::post('/admin/sync',[BetLensController::class,'sync'])->name('admin.sync');
     Route::patch('/admin/ligi/{league}/toggle',[BetLensController::class,'toggleLeague'])->name('admin.leagues.toggle');

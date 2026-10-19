@@ -1,5 +1,5 @@
 @extends('layouts.app') @section('title','Admin') @section('content')
-<div class="page-head"><div><p class="eyebrow">Control center</p><h1>Administrare</h1><p>Surse, competiții, praguri și auditul recomandărilor.</p></div><div class="admin-head-actions"><a class="btn secondary" href="{{ route('admin.mindmap') }}">Mindmap date</a><form method="post" action="{{ route('admin.sync') }}">@csrf<button class="btn"><i data-lucide="refresh-cw" size="17"></i>Sincronizează acum</button></form><form method="post" action="{{ route('admin.logout') }}">@csrf<button class="btn secondary"><i data-lucide="log-out" size="17"></i>Ieșire</button></form></div></div>
+<div class="page-head"><div><p class="eyebrow">Control center</p><h1>Administrare</h1><p>Surse, competiții, praguri și auditul recomandărilor.</p></div><div class="admin-head-actions"><a class="btn secondary" href="{{ route('admin.import-audit') }}"><i data-lucide="clipboard-list" size="17"></i>Audit importuri</a><a class="btn secondary" href="{{ route('admin.mindmap') }}">Mindmap date</a><form method="post" action="{{ route('admin.sync') }}">@csrf<button class="btn"><i data-lucide="refresh-cw" size="17"></i>Sincronizează acum</button></form><form method="post" action="{{ route('admin.logout') }}">@csrf<button class="btn secondary"><i data-lucide="log-out" size="17"></i>Ieșire</button></form></div></div>
 <div class="admin-grid"><div class="card kpi"><span>Ligi active</span><b>{{ $leagues->count() }}</b><small class="muted">configurabile</small></div><div class="card kpi"><span>Recomandări</span><b>{{ \App\Models\Recommendation::count() }}</b><small class="muted">generate din date reale</small></div><div class="card kpi"><span>Surse înregistrate</span><b>{{ \App\Models\DataSource::count() }}</b><small class="muted">furnizori externi</small></div></div>
 <p><a class="btn secondary" href="{{ route('admin.aliases.index') }}"><i data-lucide="list-filter" size="17"></i>Aliasuri echipe</a></p>
 <section class="card admin-section">
@@ -13,8 +13,8 @@
                     <b>{{ $source->name }}</b>
                     <small class="muted">{{ $source->credential_env }} · {{ filled($source->credential_secret)?'Cheie salvată în Admin':($source->is_configured?'Configurată prin .env':'Neconfigurată') }}</small>
                 </div>
-                <label class="visually-hidden" for="source-key-{{ $source->id }}">Cheie API nouă pentru {{ $source->name }}</label>
-                <input id="source-key-{{ $source->id }}" class="field" type="password" name="credential_secret" autocomplete="new-password" placeholder="Cheie nouă (nu este afișată)" maxlength="512">
+                <label class="visually-hidden" for="source-key-{{ $source->id }}">{{ $source->is_configured ? 'Înlocuiește cheia API pentru' : 'Adaugă cheie API pentru' }} {{ $source->name }}</label>
+                <input id="source-key-{{ $source->id }}" class="field" type="password" name="credential_secret" autocomplete="new-password" placeholder="{{ $source->is_configured ? '********' : 'Adaugă cheie' }}" maxlength="512">
                 <button class="btn small" type="submit">Salvează cheia</button>
                 @if(filled($source->credential_secret))
                     <button class="btn secondary small" type="submit" name="remove" value="1" formnovalidate onclick="return confirm('Elimini cheia salvată în Admin pentru această sursă?')">Elimină cheia</button>

@@ -11,7 +11,11 @@ class RequireTicketAccount
 {
     public function handle(Request $request, Closure $next): Response
     {
-        if (! $request->user() && ! TicketAccess::admin($request)) {
+        if (TicketAccess::admin($request)) {
+            abort(403, 'Conturile de administrator nu pot accesa sau plasa bilete.');
+        }
+
+        if (! $request->user()) {
             return $request->isMethod('GET')
                 ? redirect()->guest(route('user.login'))
                 : redirect()->route('user.login');

@@ -15,18 +15,16 @@ class MindmapData
     public function snapshot(?int $leagueId = null, ?int $seasonId = null): array
     {
         $observed = now()->toIso8601String();
-        $demo = ! SourceRecord::exists() && ! FootballMatch::exists();
+        $demo = false;
         $metadata = ApplicationSetting::where('group', 'mindmap')->get()->keyBy('key');
-        $sources = DataSource::where('slug', '!=', 'the-odds-api')->get()->keyBy('slug');
+        $sources = DataSource::with(['levels'])->withCount('records')->get()->keyBy('slug');
         $rows = [];
-        $catalog = (new SourceCatalog)->entries();
+        $catalog = [];
         foreach ($sources as $slug => $source) {
-            if (! collect($catalog)->contains(fn ($entry) => $entry[0] === $slug)) {
-                $meta = $metadata->get('mindmap.source.'.$source->id)?->value ?? [];
-                $catalog[] = [$slug, $source->name, $meta['group'] ?? 'football', $meta['type'] ?? match ($slug) {
-                    'understat' => 'html', 'football-data-uk' => 'csv', default => 'rest'
-                }, 'în registru'];
-            }
+            $meta = $metadata->get('mindmap.source.'.$source->id)?->value ?? [];
+            $catalog[] = [$slug, $source->name, $meta['group'] ?? 'football', $meta['type'] ?? match ($slug) {
+                'understat' => 'html', 'football-data-uk' => 'csv', default => 'rest'
+            }, 'în registru'];
         }
         foreach ($catalog as [$slug, $name, $group, $type, $role]) {
             $source = $sources->get($slug);
@@ -34,21 +32,40 @@ class MindmapData
             $group = $meta['group'] ?? $group;
             $type = $meta['type'] ?? $type;
             $last = $source ? DB::table('data_sync_logs')->where('provider', $slug)->where('type', 'source_sync')->latest('finished_at')->first() : null;
+            $levels = $source?->levels->pluck('level')->all() ?? [];
+            $latestRun = $source?->importRuns()->latest()->first();
+            $lastSuccessfulRun = $source?->importRuns()->where('status', 'completed')->latest()->first();
+            $configured = $slug === 'api-football'
+                ? app(\App\Services\Imports\DigitalOceanFunctionService::class)->configured('api_football_l1')
+                : ($source?->is_configured ?? false);
+            $status = $source?->import_method === 'unsupported' ? 'unsupported' : (! $source?->active ? 'inactive' : (! $source?->import_enabled ? 'inactive' : (! $configured ? 'not_configured' : (in_array($latestRun?->status, ['queued', 'running']) ? 'checking' : ($source?->status === 'not_configured' ? 'never_checked' : $source?->status)))));
+            $coverage = $leagueId ? DB::table('data_source_competitions')->where('data_source_id', $source->id)->where('league_id', $leagueId)->first() : null;
             $rows[] = [
                 'id' => $source?->id, 'slug' => $slug, 'name' => $name, 'group' => $group,
+                'levels' => $levels, 'level' => $levels[0] ?? 1,
                 'type' => $type, 'typeLabel' => $slug === 'football-data-uk' ? 'CSV · adaptor existent' : SourceCatalog::TYPES[$type], 'role' => $role,
                 'category' => $slug === 'football-data-uk' ? 'Rezultate istorice și statistici de meci' : ($source?->category ?? SourceCatalog::GROUPS[$group]),
-                'demo' => ! $source && $demo, 'configured' => (bool) $source,
-                'status' => $source?->status ?? 'not_configured',
-                'statusLabel' => $source?->status === 'conflict' ? 'conflict' : ($source?->status_label ?? 'Importator neconfigurat'),
+                'demo' => false, 'configured' => $configured,
+                'status' => $status,
+                'statusLabel' => match ($status) { 'inactive' => 'Inactiv', 'unsupported' => 'Nesuportat', 'checking' => 'În curs', 'never_checked' => 'Neverificată', 'not_configured' => 'Neconfigurată', default => $source?->status_label ?? 'Neconfigurată' },
                 'active' => $source?->active ?? false,
-                'canImport' => $source && $this->canImport($source),
-                'lastSync' => $last?->finished_at,
-                'created' => $last && $last->status === 'healthy' ? $source->last_new_records : null,
-                'updated' => $last && $last->status === 'healthy' ? $source->last_updated_records : null,
+                'activeRunId' => in_array($latestRun?->status, ['queued', 'running'], true) ? $latestRun->id : null,
+                'activeRunStatus' => in_array($latestRun?->status, ['queued', 'running'], true) ? $latestRun->status : null,
+                'canImport' => $source && app(ImportManager::class)->canImport($source, $leagueId),
+                'lastSync' => $lastSuccessfulRun?->finished_at?->toIso8601String() ?? ($last && $last->status === 'healthy' ? $last->finished_at : null),
+                'created' => $latestRun?->records_new ?? ($last && $last->status === 'healthy' ? $source->last_new_records : null),
+                'updated' => $latestRun?->records_updated ?? ($last && $last->status === 'healthy' ? $source->last_updated_records : null),
                 'errors' => $last ? $source->last_error_records : null,
                 // Existing importers do not record reconciled, cross-provider conflicts.
-                'conflicts' => null, 'competition' => $meta['competition'] ?? 'unavailable',
+                'conflicts' => null, 'competition' => $coverage?->coverage_status ?? 'neconfirmată',
+                'externalCompetitionId' => $coverage?->external_competition_id,
+                'recordsCount' => $source->records_count,
+                'method' => $source->import_method, 'frequency' => $source->import_frequency,
+                'nextRun' => ($source->import_frequency !== 'manual' && isset(ImportScheduler::MINUTES[$source->import_frequency]))
+                    ? ($latestRun?->created_at?->addMinutes(ImportScheduler::MINUTES[$source->import_frequency])->toIso8601String() ?? now()->toIso8601String()) : null,
+                'timeout' => $source->request_timeout, 'importEnabled' => $source->import_enabled,
+                'website' => $source->website_url,
+                'mappings' => DB::table('source_field_mappings')->where('data_source_id', $source->id)->get(['external_field', 'internal_field'])->toArray(),
                 'endpoint' => isset(SourceCatalog::ENDPOINTS[$slug]) && $source?->verification_url === SourceCatalog::ENDPOINTS[$slug] ? SourceCatalog::ENDPOINTS[$slug] : null,
                 'provenance' => $source ? 'data_sources #'.$source->id.' · data_sync_logs' : 'Catalog de integrare · '.($demo ? 'Demo' : 'neconfigurat'),
                 'observedAt' => $source?->updated_at?->toIso8601String() ?? $observed,
@@ -92,7 +109,7 @@ class MindmapData
 
         return [
             'rows' => $rows, 'demo' => $demo, 'observedAt' => $observed,
-            'groups' => SourceCatalog::GROUPS, 'types' => SourceCatalog::TYPES,
+            'groups' => SourceCatalog::GROUPS, 'types' => SourceCatalog::TYPES, 'levels' => SourceCatalog::LEVELS,
             'leagues' => League::orderBy('name')->get(),
             'seasons' => Season::when($leagueId, fn ($q) => $q->where('league_id', $leagueId))->orderByDesc('starts_at')->get(),
             'leagueId' => $leagueId, 'seasonId' => $seasonId,
@@ -115,7 +132,7 @@ class MindmapData
 
     public function canImport(DataSource $source): bool
     {
-        return $source->active && isset(SourceCatalog::ENDPOINTS[$source->slug]) && $source->verification_url === SourceCatalog::ENDPOINTS[$source->slug];
+        return app(ImportManager::class)->canImport($source);
     }
 
     private function normalize(array $value): array

@@ -50,6 +50,16 @@ return [
         'key' => env('API_FOOTBALL_KEY'),
     ],
 
+    'digitalocean_functions' => [
+        'api_football_l1' => [
+            'url' => env('BETLENS_API_FOOTBALL_FUNCTION_URL'),
+            'token' => env('BETLENS_API_FOOTBALL_FUNCTION_TOKEN'),
+            'timeout' => (int) env('BETLENS_API_FOOTBALL_FUNCTION_TIMEOUT', 30),
+            'name' => 'BetLens-Import-L1-APIFootball-JSON',
+            'queue' => env('BETLENS_API_FOOTBALL_FUNCTION_QUEUE', 'betlens-api-football-l1'),
+        ],
+    ],
+
     'sportmonks' => [
         'token' => env('SPORTMONKS_API_TOKEN'),
         'base_url' => env('SPORTMONKS_BASE_URL', 'https://api.sportmonks.com/v3'),
