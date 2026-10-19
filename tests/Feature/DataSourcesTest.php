@@ -34,6 +34,33 @@ class DataSourcesTest extends TestCase
         $this->assertDatabaseCount('import_audits',1);
         $this->assertDatabaseHas('import_audits',['verification_run_id'=>$runId,'overall_status'=>'success','records_new'=>1]);
     }
+    public function test_manual_json_verification_finishes_without_a_queue_worker(): void
+    {
+        $source=\App\Models\DataSource::where('slug','football-data-uk')->firstOrFail();
+        Http::fake(['www.football-data.co.uk/*'=>Http::response("Div,Date,HomeTeam,AwayTeam,FTHG,FTAG\nE0,15/08/2026,Arsenal,Chelsea,2,1\n",200)]);
+        $runId=$this->postJson(route('data-sources.verify',$source))->assertStatus(202)->json('run_id');
+
+        $this->getJson(route('data-sources.progress',$source))
+            ->assertOk()->assertJsonPath('run_id',$runId)
+            ->assertJsonPath('stage','finished')->assertJsonPath('status','healthy')
+            ->assertJsonPath('new',1);
+        $this->assertDatabaseCount('jobs',0);
+        $this->assertDatabaseHas('import_audits',['verification_run_id'=>$runId,'overall_status'=>'success']);
+    }
+
+    public function test_orphaned_progress_ends_in_warning_instead_of_waiting_forever(): void
+    {
+        $source=\App\Models\DataSource::where('slug','statsbomb-open-data')->firstOrFail();
+        $runId=(string)\Illuminate\Support\Str::uuid();
+        $source->update(['status'=>'healthy','verification_run_id'=>$runId,
+            'verification_progress'=>['stage'=>'queued','message'=>'Verificarea a fost pusă în coadă.']]);
+        app(\App\Services\ImportAuditService::class)->syncVerification($source,$runId);
+
+        $this->getJson(route('data-sources.progress',$source))
+            ->assertOk()->assertJsonPath('stage','finished')
+            ->assertJsonPath('status','stale');
+        $this->assertDatabaseHas('import_audits',['verification_run_id'=>$runId,'overall_status'=>'warning']);
+    }
     public function test_api_football_verification_is_audited_while_queued_and_after_failure(): void
     {
         Queue::fake();

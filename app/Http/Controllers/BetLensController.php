@@ -276,13 +276,16 @@ class BetLensController extends Controller
         if (request()->expectsJson()) {
             $runId=(string)\Illuminate\Support\Str::uuid();
             $source->update(['status'=>'checking','verification_run_id'=>$runId,'verification_progress'=>[
-                'stage'=>'queued','message'=>'Verificarea a fost pusă în coadă.','processed'=>0,
+                'stage'=>'queued','message'=>'Verificarea pornește imediat după răspunsul paginii.','processed'=>0,
                 'detected'=>null,'new'=>0,'updated'=>0,'unchanged'=>0,'errors'=>0,
                 'started_at'=>now()->toIso8601String(),
-                'steps'=>['queued'=>['started_at'=>now()->toIso8601String(),'message'=>'Verificarea a fost pusă în coadă.']],
+                'steps'=>['queued'=>['started_at'=>now()->toIso8601String(),'message'=>'Se pregătește rularea locală.']],
             ]]);
             app(\App\Services\ImportAuditService::class)->syncVerification($source,$runId);
-            VerifyDataSource::dispatch($source->id,$runId);
+            // Execute after the HTTP response in this PHP process. The database queue is
+            // shared with DigitalOcean; a remote worker may run different code and never
+            // publish the progress stages expected by this modal.
+            VerifyDataSource::dispatchAfterResponse($source->id,$runId);
             return response()->json(['run_id'=>$runId,'progress_url'=>route('data-sources.progress',$source)],202);
         }
         VerifyDataSource::dispatchSync($source->id);
@@ -295,14 +298,18 @@ class BetLensController extends Controller
     public function dataSourceProgress(DataSource $source)
     {
         $progress=$source->verification_progress??[];
+        $orphaned = $source->status !== 'checking' && ($progress['stage'] ?? null) === 'queued';
+        if ($orphaned) app(\App\Services\ImportAuditService::class)->markUntrackedVerification($source);
         return response()->json([
             'run_id'=>$source->verification_run_id,
             'name'=>$source->name,
-            'status'=>$source->status,
-            'status_label'=>$source->status_label,
-            'stage'=>$progress['stage']??'idle',
+            'status'=>$orphaned ? 'stale' : $source->status,
+            'status_label'=>$orphaned ? 'Progres indisponibil' : $source->status_label,
+            'stage'=>$orphaned ? 'finished' : ($progress['stage']??'idle'),
             'steps'=>$progress['steps']??[],
-            'message'=>$progress['message']??'Nu există o verificare în curs.',
+            'message'=>$orphaned
+                ? 'Rularea a fost preluată în afara procesului local; etapele nu au fost transmise. Repornește verificarea după perioada de așteptare.'
+                : ($progress['message']??'Nu există o verificare în curs.'),
             'source_host'=>parse_url($source->verification_url ?? '',PHP_URL_HOST),
             'http_status'=>$progress['http_status']??null,
             'response_bytes'=>$progress['response_bytes']??null,
