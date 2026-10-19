@@ -59,7 +59,7 @@ class ImportedSuperbetTicketsTest extends TestCase
             ->assertSee('55% din biletele plasate')
             ->assertSee('92% din biletele afișate');
         $this->get(route('tickets',['source'=>'import','status'=>'won']))->assertOk()
-            ->assertSee('100,0% din biletele plasate')
+            ->assertSee('100% din biletele plasate')
             ->assertDontSee('BL-PENDING-STATS');
     }
 
