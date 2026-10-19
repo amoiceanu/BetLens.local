@@ -2,10 +2,32 @@
 namespace Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 class DataSourcesTest extends TestCase
 {
     use RefreshDatabase;
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->withSession(['admin_user_id'=>\App\Models\User::factory()->create(['is_admin'=>true])->id]);
+    }
+    public function test_json_verification_exposes_live_progress_and_final_counters(): void
+    {
+        Queue::fake();
+        $source=\App\Models\DataSource::where('slug','football-data-uk')->firstOrFail();
+        $start=$this->postJson(route('data-sources.verify',$source))->assertStatus(202);
+        $runId=$start->json('run_id');
+        Queue::assertPushed(\App\Jobs\VerifyDataSource::class);
+        $this->getJson(route('data-sources.progress',$source))
+            ->assertOk()->assertJsonPath('run_id',$runId)->assertJsonPath('stage','queued');
+
+        Http::fake(['www.football-data.co.uk/*'=>Http::response("Div,Date,HomeTeam,AwayTeam,FTHG,FTAG\nE0,15/08/2026,Arsenal,Chelsea,2,1\n",200)]);
+        (new \App\Jobs\VerifyDataSource($source->id,$runId))->handle();
+        $this->getJson(route('data-sources.progress',$source))
+            ->assertOk()->assertJsonPath('stage','finished')->assertJsonPath('new',1)
+            ->assertJsonPath('detected',1)->assertJsonPath('database',1);
+    }
     public function test_data_sources_registry_is_visible(): void
     {
         $this->get('/surse-date')
@@ -22,12 +44,14 @@ class DataSourcesTest extends TestCase
             'services.api_football.key'=>null,
             'services.football_data.key'=>null,
             'services.odds_api.key'=>null,
+            'services.odds_api_io.key'=>null,
+            'services.oddspapi.key'=>null,
             'services.sportmonks.token'=>null,
         ]);
 
         $this->get('/surse-date')->assertOk()->assertViewHas('sources', fn($sources) => $sources->pluck('slug')->all() === [
             'football-data-uk', 'open-meteo', 'openligadb', 'statsbomb-open-data', 'understat',
-            'api-football', 'football-data', 'sportmonks', 'the-odds-api',
+            'api-football', 'football-data', 'odds-api-io-superbet', 'oddspapi-superbet', 'sportmonks', 'the-odds-api',
         ]);
     }
     public function test_verification_action_is_hidden_for_an_unconfigured_source(): void

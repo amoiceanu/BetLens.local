@@ -13,9 +13,9 @@ class SyncOdds extends Command
 
     public function handle(OddsImportService $service, ImportAuditService $audit): int
     {
-        $key = config('services.odds_api.key');
+        $key = \App\Models\DataSource::where('slug','the-odds-api')->first()?->credentialValue();
         if (blank($key)) {
-            $this->error('Lipsește ODDS_API_KEY din fișierul .env.');
+            $this->error('Lipsește cheia pentru The Odds API. Configureaz-o în Admin sau .env.');
             return self::FAILURE;
         }
         $metrics = $service->sync($key);

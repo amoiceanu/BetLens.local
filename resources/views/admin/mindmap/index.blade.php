@@ -14,7 +14,7 @@
         </div>
         <div class="mm-workspace">
             <section class="mm-canvas-panel" aria-label="Harta interactivă a datelor">
-                <div class="mm-canvas-top"><span>◎ ECOSISTEMUL DATELOR</span><span id="mm-count" aria-live="polite"></span></div>
+                <div class="mm-canvas-top"><span>◎ ECOSISTEMUL DATELOR</span><div class="mm-canvas-tools"><span id="mm-count" aria-live="polite"></span><button id="mm-fullscreen" type="button" aria-label="Afișează harta pe ecran complet" aria-pressed="false" title="Ecran complet"><i class="mm-enter-icon" data-lucide="maximize" size="15" aria-hidden="true"></i><i class="mm-exit-icon" data-lucide="minimize" size="15" aria-hidden="true"></i><span>Ecran complet</span></button></div></div>
                 <div id="mm-viewport" tabindex="0" aria-label="Canvas: trage pentru pan; folosește butoanele de zoom sau tastele plus și minus. Tab pentru noduri.">
                     <div id="mm-world">
                         <svg class="mm-connections" viewBox="0 0 1080 790" aria-hidden="true"><defs><filter id="mm-glow"><feGaussianBlur stdDeviation="3"/></filter></defs><path class="football" d="M340 150 C425 150 400 240 480 240"/><path class="romania" d="M740 150 C660 150 680 240 600 240"/><path class="news" d="M340 460 C430 460 400 300 480 290"/><path class="context" d="M740 450 C655 450 680 300 600 290"/><path class="flow" d="M540 340 V670 M190 710 H890"/></svg>

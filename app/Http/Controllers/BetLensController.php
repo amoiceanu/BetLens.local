@@ -6,6 +6,7 @@ use App\Jobs\VerifyDataSource;
 use App\Models\FootballMatch;
 use App\Models\GeneratedTicket;
 use App\Models\GeneratedTicketSelection;
+use App\Models\ImportedTicket;
 use App\Models\ApplicationSetting;
 use App\Models\DataSource;
 use App\Models\League;
@@ -19,7 +20,9 @@ use App\Services\MatchDataService;
 use App\Services\MatchUrlParser;
 use App\Services\TeamAliasMatcher;
 use App\Services\TicketBuilderService;
+use App\Support\TicketAccess;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
@@ -50,7 +53,7 @@ class BetLensController extends Controller
         }
         $totals=$builder->totals($items);
         $kickoffs=$items->pluck('match.kickoff_at')->filter()->sort()->values();
-        $ticket=GeneratedTicket::create(['league_id'=>$leagueId,'reference'=>'BL-'.strtoupper(Str::random(8)),'risk_profile'=>$data['profile'],'total_odds'=>$totals['odds'],'combined_probability'=>$totals['probability']/100,'stake'=>$data['stake']??null,'status'=>'pending','first_match_at'=>$kickoffs->first(),'last_match_at'=>$kickoffs->last()]);
+        $ticket=GeneratedTicket::create(['user_id'=>TicketAccess::userId($request),'league_id'=>$leagueId,'reference'=>'BL-'.strtoupper(Str::random(8)),'risk_profile'=>$data['profile'],'total_odds'=>$totals['odds'],'combined_probability'=>$totals['probability']/100,'stake'=>$data['stake']??null,'status'=>'pending','first_match_at'=>$kickoffs->first(),'last_match_at'=>$kickoffs->last()]);
         foreach($items as $item) $ticket->selections()->create(['recommendation_id'=>$item->id,'odds_at_creation'=>$item->odds]);
         return redirect()->route('tickets.show',$ticket)->with('success','Biletul a fost generat și salvat.');
     }
@@ -98,6 +101,9 @@ class BetLensController extends Controller
         $bestOdd=null;
         if($bestRecommendation){$provider=$bestRecommendation->factors['bookmaker']??null;if($provider)$bestOdd=Odd::where(['match_id'=>$match->id,'market_id'=>$bestRecommendation->market_id,'selection'=>$bestRecommendation->selection,'provider'=>$provider])->first();}
         $ticketQuery=GeneratedTicket::whereHas('selections.recommendation',fn($query)=>$query->where('match_id',$match->id));
+        if (! TicketAccess::admin($request)) {
+            $ticketQuery->where('user_id', $request->user()?->id ?? 0);
+        }
         $backTicket=$request->integer('ticket')?(clone $ticketQuery)->whereKey($request->integer('ticket'))->first():null;
         $backTicket??=$ticketQuery->latest()->first();
         return view('matches.show',['match'=>$match,'homeStats'=>$stats->summary($match->homeTeam),'awayStats'=>$stats->summary($match->awayTeam),'bestRecommendation'=>$bestRecommendation,'alternatives'=>$alternatives,'bestOdd'=>$bestOdd,'backTicket'=>$backTicket]);
@@ -105,23 +111,62 @@ class BetLensController extends Controller
 
     public function tickets(Request $request)
     {
+        $filters=$request->validate([
+            'source'=>'nullable|in:betlens,import',
+            'status'=>'nullable|in:pending,placed,won,lost,void',
+            'from'=>'nullable|date_format:Y-m-d',
+            'to'=>array_filter(['nullable','date_format:Y-m-d',$request->filled('from')?'after_or_equal:from':null]),
+        ]);
+        $filters=array_map(fn($value)=>$value??'',array_merge(['source'=>'','status'=>'','from'=>'','to'=>''],$filters));
         $sort=in_array($request->query('sort'),['reference','created_at','first_match_at','last_match_at','risk_profile','selections','total_odds','combined_probability','status'],true)?$request->query('sort'):'created_at';
         $direction=$request->query('direction')==='asc'?'asc':'desc';
-        $tickets=GeneratedTicket::with(['league','operator','selections.recommendation.match.homeTeam','selections.recommendation.match.awayTeam'])->get();
-        $value=fn(GeneratedTicket $ticket)=>match($sort){'reference'=>strtolower($ticket->reference),'created_at'=>$ticket->created_at->timestamp,'first_match_at'=>$ticket->effective_first_match_at?->timestamp??0,'last_match_at'=>$ticket->effective_last_match_at?->timestamp??0,'risk_profile'=>$ticket->risk_profile,'selections'=>$ticket->selections->count(),'total_odds'=>$ticket->total_odds,'combined_probability'=>$ticket->combined_probability,'status'=>strtolower($ticket->status_label)};
+        $admin=TicketAccess::admin($request)!==null;
+        $generated=$filters['source']==='import'?collect():GeneratedTicket::with(['league','operator','selections.recommendation.market','selections.recommendation.match.league','selections.recommendation.match.homeTeam','selections.recommendation.match.awayTeam'])->when(! $admin,fn($query)=>$query->where('user_id',$request->user()->id))->get();
+        $imported=$filters['source']==='betlens'?collect():ImportedTicket::with('selections')->when(! $admin,fn($query)=>$query->where('user_id',$request->user()->id))->get();
+        $tickets=$generated->concat($imported)->filter(function($ticket)use($filters){
+            $status=$ticket->status==='placed_winbet'?'placed':$ticket->status;
+            $date=($ticket instanceof ImportedTicket?$ticket->placed_at:$ticket->created_at)->toDateString();
+            return ($filters['status']===''||$status===$filters['status'])
+                &&($filters['from']===''||$date>=$filters['from'])
+                &&($filters['to']===''||$date<=$filters['to']);
+        });
+        $ticketStats=[
+            'total'=>$tickets->count(),
+            'placed'=>$tickets->filter(fn($ticket)=>in_array($ticket->status,['placed','placed_winbet','won','lost'],true))->count(),
+            'won'=>$tickets->where('status','won')->count(),
+            'lost'=>$tickets->where('status','lost')->count(),
+        ];
+        $value=fn($ticket)=>match($sort){'reference'=>strtolower($ticket->reference),'created_at'=>($ticket instanceof ImportedTicket?$ticket->placed_at:$ticket->created_at)->timestamp,'first_match_at'=>$ticket->effective_first_match_at?->timestamp??0,'last_match_at'=>$ticket->effective_last_match_at?->timestamp??0,'risk_profile'=>$ticket instanceof ImportedTicket?'Import':$ticket->risk_profile,'selections'=>$ticket->selections->count(),'total_odds'=>$ticket->total_odds,'combined_probability'=>$ticket instanceof ImportedTicket?-1:$ticket->combined_probability,'status'=>strtolower($ticket->status_label)};
         $tickets=($direction==='asc'?$tickets->sortBy($value,SORT_NATURAL|SORT_FLAG_CASE):$tickets->sortByDesc($value,SORT_NATURAL|SORT_FLAG_CASE))->values();
-        return view('tickets.index',compact('tickets','sort','direction'));
+        return view('tickets.index',compact('tickets','ticketStats','sort','direction','filters'));
     }
 
     public function ticket(GeneratedTicket $ticket)
     {
+        abort_unless(TicketAccess::canAccess(request(), $ticket->user_id), 404);
         $ticket->load(['league','selections.recommendation.match.league','selections.recommendation.match.homeTeam','selections.recommendation.match.awayTeam','selections.recommendation.match.providerMappings','selections.recommendation.market']);
         $operators=Operator::orderBy('name')->get();
         return view('tickets.show',compact('ticket','operators'));
     }
 
+    public function importedTicket(ImportedTicket $importedTicket, \App\Services\ImportedTicketPresentationService $presenter)
+    {
+        abort_unless(TicketAccess::canAccess(request(), $importedTicket->user_id), 404);
+        $importedTicket->load('selections');
+        return view('tickets.imported-show', ['ticket' => $importedTicket,
+            'selectionCards' => $importedTicket->selections->map(fn($selection) => $presenter->selection($selection))]);
+    }
+
+    public function destroyImportedTicket(ImportedTicket $importedTicket)
+    {
+        abort_unless(TicketAccess::canAccess(request(), $importedTicket->user_id), 404);
+        $importedTicket->delete();
+        return redirect()->route('tickets')->with('success', 'Biletul importat a fost șters.');
+    }
+
     public function updateTicket(Request $request,GeneratedTicket $ticket)
     {
+        abort_unless(TicketAccess::canAccess($request, $ticket->user_id), 404);
         if($request->has('reference')) $request->merge(['reference'=>trim((string)$request->input('reference'))]);
         $allowedStatuses=['pending','won','lost','void',...Operator::pluck('id')->map(fn($id)=>'placed:'.$id)->all()];
         $data=$request->validate([
@@ -146,18 +191,22 @@ class BetLensController extends Controller
 
     public function destroyTicket(GeneratedTicket $ticket)
     {
+        abort_unless(TicketAccess::canAccess(request(), $ticket->user_id), 404);
         $ticket->delete();
         return redirect()->route('tickets')->with('success','Biletul a fost șters.');
     }
 
     public function removeSelection(GeneratedTicketSelection $selection, TicketBuilderService $builder)
     {
+        $ownerId=GeneratedTicket::whereKey($selection->generated_ticket_id)->value('user_id');
+        abort_unless(TicketAccess::canAccess(request(), $ownerId), 404);
         $ticket=$selection->generated_ticket_id; $selection->delete(); $this->refreshTicket($ticket,$builder); return back()->with('success','Selecția a fost eliminată.');
     }
 
     public function replaceSelection(GeneratedTicketSelection $selection, TicketBuilderService $builder)
     {
         $ticket=GeneratedTicket::with('selections.recommendation')->findOrFail($selection->generated_ticket_id);
+        abort_unless(TicketAccess::canAccess(request(), $ticket->user_id), 404);
         $usedMatches=$ticket->selections->pluck('recommendation.match_id');
         $replacement=Recommendation::where('eligible',true)->whereNotIn('match_id',$usedMatches)->whereHas('match',fn($q)=>$q->where('kickoff_at','>',now()))->orderByDesc('score')->first();
         if(!$replacement) return back()->with('warning','Nu există o selecție alternativă eligibilă acum.');
@@ -199,11 +248,44 @@ class BetLensController extends Controller
         if (!$reserved) {
             return back()->with('warning', "{$source->name} poate fi verificată din nou după 5 minute.");
         }
+        if (request()->expectsJson()) {
+            $runId=(string)\Illuminate\Support\Str::uuid();
+            $source->update(['status'=>'checking','verification_run_id'=>$runId,'verification_progress'=>[
+                'stage'=>'queued','message'=>'Verificarea a fost pusă în coadă.','processed'=>0,
+                'detected'=>null,'new'=>0,'updated'=>0,'unchanged'=>0,'errors'=>0,
+                'started_at'=>now()->toIso8601String(),
+            ]]);
+            VerifyDataSource::dispatch($source->id,$runId);
+            return response()->json(['run_id'=>$runId,'progress_url'=>route('data-sources.progress',$source)],202);
+        }
         VerifyDataSource::dispatchSync($source->id);
         $source->refresh();
         $message=$source->status==='healthy' ? "{$source->name} a fost verificată cu succes." : "Verificarea pentru {$source->name} s-a încheiat: {$source->status_label}.";
         $result=['name'=>$source->name,'status'=>$source->status,'status_label'=>$source->status_label,'checked_at'=>$source->last_checked_at?->format('d.m.Y · H:i:s'),'duration'=>$source->last_duration_ms,'detected'=>$source->records_checked,'database'=>$source->last_database_records,'new'=>$source->last_new_records,'updated'=>$source->last_updated_records,'unchanged'=>$source->last_unchanged_records,'errors'=>$source->last_error_records,'message'=>$source->last_message,'verification_only'=>(int)$source->records_checked===0];
         return back()->with($source->status==='healthy'?'success':'warning',$message)->with('verification_result',$result);
+    }
+
+    public function dataSourceProgress(DataSource $source)
+    {
+        $progress=$source->verification_progress??[];
+        return response()->json([
+            'run_id'=>$source->verification_run_id,
+            'name'=>$source->name,
+            'status'=>$source->status,
+            'status_label'=>$source->status_label,
+            'stage'=>$progress['stage']??'idle',
+            'message'=>$progress['message']??'Nu există o verificare în curs.',
+            'processed'=>$progress['processed']??0,
+            'detected'=>$progress['detected']??null,
+            'new'=>$progress['new']??0,
+            'updated'=>$progress['updated']??0,
+            'unchanged'=>$progress['unchanged']??0,
+            'errors'=>$progress['errors']??0,
+            'database'=>$source->status==='checking'?($progress['database']??$source->records()->count()):$source->last_database_records,
+            'duration_ms'=>$source->status==='checking'&&isset($progress['started_at'])?
+                (int)\Carbon\Carbon::parse($progress['started_at'])->diffInMilliseconds(now()):$source->last_duration_ms,
+            'checked_at'=>$source->last_checked_at?->format('d.m.Y · H:i:s'),
+        ])->header('Cache-Control','no-store');
     }
 
     public function adminLogin(Request $request){$userId=$request->session()->get('admin_user_id');return $userId&&User::whereKey($userId)->where('is_admin',true)->exists()?redirect()->route('admin'):view('admin.login');}
@@ -214,6 +296,7 @@ class BetLensController extends Controller
         $user=User::where('is_admin',true)->where(fn($query)=>$query->where('username',$username)->orWhere('email',$username))->first();
         if(!$user||!Hash::check($data['password'],$user->password)) return back()->withErrors(['username'=>'Date de autentificare incorecte.'])->onlyInput('username');
         $request->session()->regenerate();
+        Auth::logout();
         $request->session()->put('admin_user_id',$user->id);
         return redirect()->intended(route('admin'));
     }
@@ -223,7 +306,24 @@ class BetLensController extends Controller
         $request->session()->regenerateToken();
         return redirect()->route('admin.login');
     }
-    public function admin(){return view('admin.index',['leagues'=>League::withCount(['teams','matches'])->get(),'markets'=>Market::get(),'settings'=>ApplicationSetting::where('group','risk')->get(),'recommendations'=>Recommendation::with(['match.homeTeam','match.awayTeam'])->latest()->take(10)->get()]);}
+    public function admin(){return view('admin.index',['leagues'=>League::withCount(['teams','matches'])->get(),'markets'=>Market::get(),'settings'=>ApplicationSetting::where('group','risk')->get(),'sources'=>DataSource::whereNotNull('credential_env')->orderBy('name')->get(),'recommendations'=>Recommendation::with(['match.homeTeam','match.awayTeam'])->latest()->take(10)->get()]);}
+    public function updateDataSourceKey(Request $request, DataSource $source)
+    {
+        abort_unless(in_array($source->credential_env, ['FOOTBALL_DATA_API_KEY','API_FOOTBALL_KEY','ODDS_API_KEY','ODDS_API_IO_KEY','ODDSPAPI_API_KEY','SPORTMONKS_API_TOKEN'], true), 404);
+        $data=$request->validate(['credential_secret'=>'nullable|string|max:512','remove'=>'nullable|boolean']);
+        if($request->boolean('remove')) {
+            $source->update(['credential_secret'=>null,'status'=>filled(config(match($source->credential_env){
+                'FOOTBALL_DATA_API_KEY'=>'services.football_data.key','API_FOOTBALL_KEY'=>'services.api_football.key',
+                'ODDS_API_KEY'=>'services.odds_api.key','ODDS_API_IO_KEY'=>'services.odds_api_io.key',
+                'ODDSPAPI_API_KEY'=>'services.oddspapi.key','SPORTMONKS_API_TOKEN'=>'services.sportmonks.token',
+            }))?'never_checked':'not_configured']);
+            return back()->with('success',"Cheia salvată în Admin pentru {$source->name} a fost eliminată.");
+        }
+        $secret=trim((string)($data['credential_secret']??''));
+        if($secret==='')return back()->with('warning','Introdu o cheie nouă sau selectează eliminarea cheii din Admin.');
+        $source->update(['credential_secret'=>$secret,'status'=>'never_checked']);
+        return back()->with('success',"Cheia pentru {$source->name} a fost salvată. Verifică sursa pentru a confirma conexiunea.");
+    }
     public function sync(){SyncFootballData::dispatch(); return back()->with('success','Sincronizarea a fost adăugată în coadă.');}
     public function toggleLeague(League $league){$league->update(['active'=>!$league->active]);return back()->with('success','Statusul ligii a fost actualizat.');}
     public function toggleMarket(Market $market){$market->update(['active'=>!$market->active]);return back()->with('success','Piața a fost actualizată.');}

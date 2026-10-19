@@ -9,6 +9,11 @@ use Tests\TestCase;
 class OperatorsTest extends TestCase
 {
     use RefreshDatabase;
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->withSession(['admin_user_id'=>\App\Models\User::factory()->create(['is_admin'=>true])->id]);
+    }
 
     public function test_default_operators_are_visible(): void
     {

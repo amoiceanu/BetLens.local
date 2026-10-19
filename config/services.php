@@ -34,6 +34,14 @@ return [
         'markets' => env('ODDS_API_MARKETS', 'h2h,totals'),
     ],
 
+    'odds_api_io' => [
+        'key' => env('ODDS_API_IO_KEY'),
+    ],
+
+    'oddspapi' => [
+        'key' => env('ODDSPAPI_API_KEY'),
+    ],
+
     'football_data' => [
         'key' => env('FOOTBALL_DATA_API_KEY'),
     ],

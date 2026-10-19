@@ -11,6 +11,11 @@ use Tests\TestCase;
 class ProviderExtensionsTest extends TestCase
 {
     use RefreshDatabase;
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->withSession(['admin_user_id'=>\App\Models\User::factory()->create(['is_admin'=>true])->id]);
+    }
     public function test_new_sources_are_listed_and_open_meteo_can_be_verified(): void
     {
         Http::fake(['api.open-meteo.com/*'=>Http::response(['timezone'=>'Europe/Bucharest','latitude'=>44.42,'longitude'=>26.10,'hourly'=>['time'=>[]]],200)]);

@@ -1,0 +1,8 @@
+<aside class="card imported-insights" aria-labelledby="imported-insights-title">
+    <div class="imported-insights-head"><span class="imported-insights-icon"><i data-lucide="chart-no-axes-column" size="22"></i></span><div><div class="imported-insights-title"><h2 id="imported-insights-title">BetLens Insights</h2><span>BETA</span></div><p>Analiză pe baza datelor istorice</p></div></div>
+    <div class="imported-insights-notice"><i data-lucide="info" size="19"></i><p>Această secțiune privește {{ $ticket->selections->count()===1?'selecția importată':'biletul complet' }}. Datele importate nu conțin o predicție BetLens verificată pentru acest meci.</p></div>
+    <section class="imported-insight-panel"><h3>Probabilitate estimată (BetLens)</h3><p class="imported-insight-empty">Probabilitatea nu este disponibilă pentru acest meci.</p></section>
+    <section class="imported-insight-panel"><h3>Comparație cotă</h3><div class="imported-odds-grid"><div><span>Cota SuperBet{{ $ticket->selections->count()>1?' (totală)':'' }}</span><b>{{ $ticket->total_odds===null?'Nedisponibil':number_format($ticket->total_odds,2) }}</b></div><div><span>Cota estimată BetLens</span><b>Nedisponibil</b></div></div></section>
+    <section class="imported-insight-panel imported-verdict"><span><i data-lucide="shield-alert" size="20"></i></span><div><h3>Verdict BetLens</h3><b>Date insuficiente</b><p>Date insuficiente pentru evaluarea riscului.</p></div></section>
+    <section class="imported-insight-panel"><h3>Selecții similare</h3><p class="imported-insight-empty">Statisticile pentru selecții similare vor fi disponibile după integrarea datelor istorice.</p></section>
+</aside>

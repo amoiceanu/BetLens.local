@@ -3,6 +3,7 @@ if (root) {
     const data = JSON.parse(document.getElementById('mm-data').textContent);
     const $ = id => document.getElementById(id);
     const viewport = $('mm-viewport'), world = $('mm-world');
+    const canvasPanel = root.querySelector('.mm-canvas-panel'), fullscreenButton = $('mm-fullscreen');
     let scale = 1, x = 0, y = 0, drag, selected, page = 1, direction = 1, sort = 'name';
     const announce = message => { $('mm-live').textContent = message; };
     const transform = () => { world.style.transform = `translate(${x}px, ${y}px) scale(${scale})`; $('mm-zoom').textContent = `${Math.round(scale * 100)}%`; };
@@ -11,6 +12,41 @@ if (root) {
     $('mm-zoom-in').onclick = () => zoom(1.2);
     $('mm-zoom-out').onclick = () => zoom(1 / 1.2);
     $('mm-fit').onclick = () => fit();
+    const fullscreenActive = () => document.fullscreenElement === canvasPanel || canvasPanel.classList.contains('mm-maximized');
+    const syncFullscreenButton = () => {
+        const active = fullscreenActive();
+        fullscreenButton.setAttribute('aria-pressed', String(active));
+        fullscreenButton.setAttribute('aria-label', active ? 'Ieși din ecran complet' : 'Afișează harta pe ecran complet');
+        fullscreenButton.title = active ? 'Ieși din ecran complet' : 'Ecran complet';
+        fullscreenButton.querySelector('span').textContent = active ? 'Ieși din ecran complet' : 'Ecran complet';
+        requestAnimationFrame(() => fit(true));
+    };
+    fullscreenButton.addEventListener('click', async () => {
+        if (document.fullscreenElement === canvasPanel) {
+            await document.exitFullscreen();
+        } else if (canvasPanel.classList.contains('mm-maximized')) {
+            canvasPanel.classList.remove('mm-maximized');
+            document.body.classList.remove('mm-fullscreen-fallback');
+            syncFullscreenButton();
+        } else {
+            try {
+                if (!canvasPanel.requestFullscreen) throw new Error('Fullscreen API unavailable');
+                await canvasPanel.requestFullscreen();
+            } catch {
+                canvasPanel.classList.add('mm-maximized');
+                document.body.classList.add('mm-fullscreen-fallback');
+                syncFullscreenButton();
+            }
+        }
+    });
+    document.addEventListener('fullscreenchange', syncFullscreenButton);
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && canvasPanel.classList.contains('mm-maximized')) {
+            canvasPanel.classList.remove('mm-maximized');
+            document.body.classList.remove('mm-fullscreen-fallback');
+            syncFullscreenButton();
+        }
+    });
     viewport.addEventListener('wheel', event => { if (event.ctrlKey) { event.preventDefault(); zoom(event.deltaY < 0 ? 1.1 : 1 / 1.1); } }, { passive: false });
     viewport.addEventListener('pointerdown', event => { if (event.target.closest('button') || event.button !== 0) return; drag = { px: event.clientX, py: event.clientY, x, y }; viewport.setPointerCapture(event.pointerId); viewport.classList.add('dragging'); });
     viewport.addEventListener('pointermove', event => { if (!drag) return; x = drag.x + event.clientX - drag.px; y = drag.y + event.clientY - drag.py; transform(); });

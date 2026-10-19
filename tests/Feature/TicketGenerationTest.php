@@ -7,6 +7,11 @@ use Tests\TestCase;
 class TicketGenerationTest extends TestCase
 {
     use RefreshDatabase;
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->actingAs(\App\Models\User::factory()->create(['is_admin'=>true]));
+    }
     public function test_ticket_is_not_fabricated_when_real_recommendations_are_missing(): void
     {
         $this->seed();

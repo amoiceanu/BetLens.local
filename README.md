@@ -15,6 +15,23 @@ php artisan migrate --seed
 
 În instalarea XAMPP curentă aplicația este disponibilă la `http://127.0.0.1/php-sites/BetLens.local/public/`.
 
+## Baza de date DigitalOcean
+
+Configurația locală din `.env` rămâne pe `127.0.0.1` / `betlens`. Pe droplet, modifică **doar** fișierul `.env` de acolo pentru baza managed `BetLens-Prod`:
+
+```env
+DB_CONNECTION=mysql
+DB_HOST=expona-do-user-6467325-0.i.db.ondigitalocean.com
+DB_PORT=<portul din DigitalOcean>
+DB_DATABASE=BetLens-Prod
+DB_USERNAME=<utilizatorul bazei>
+DB_PASSWORD=<parola bazei>
+MYSQL_ATTR_SSL_CA=<calea absolută către certificatul CA>
+MYSQL_ATTR_SSL_VERIFY_SERVER_CERT=true
+```
+
+Nu salva parola sau certificatul în repository. După configurare, rulează `php artisan config:clear`, verifică numele bazei conectate, apoi aplică migrațiile cu `php artisan migrate --force`. Nu rula `migrate:fresh` decât dacă ai decis explicit să ștergi toate datele din baza vizată. Când un administrator este autentificat, footerul arată `BD: DigitalOcean · BetLens-Prod` numai dacă conexiunea activă folosește atât hostul, cât și baza indicate; în rest arată baza alternativă sau eroarea conexiunii. Indicatorul nu este afișat utilizatorilor obișnuiți ori vizitatorilor.
+
 Autentificarea admin folosește conturi din tabela `users`, cu parole hash-uite. Creează sau actualizează un administrator cu:
 
 ```bash
@@ -23,14 +40,24 @@ php artisan betlens:admin-user
 
 Comanda solicită utilizatorul, emailul și parola în mod interactiv; parola nu este salvată în configurație sau în repository.
 
+## Niveluri de acces
+
+- Dashboard și Meciuri sunt publice, fără cont. Generarea și salvarea unui bilet cer autentificare.
+- Utilizatorii își creează cont la `/cont/inregistrare`, intră la `/cont/login` și văd doar propriile bilete la `/bilete`.
+- Performanță, Operatori, Surse de date și Admin necesită cont de administrator. Formularul `/admin/login` rămâne public pentru autentificare; accesul la funcțiile Admin este protejat.
+
+După actualizare, rulează `php artisan migrate --force`. Biletele existente fără `user_id` rămân vizibile doar administratorului, până când sunt atribuite explicit unui utilizator; nu sunt expuse automat tuturor conturilor noi.
+
 ## Surse reale
 
-Registrul include football-data.org, API-Football, Football-Data.co.uk, The Odds API, OpenLigaDB, StatsBomb Open Data, Understat, Sportmonks Football API și Open-Meteo. Sursele protejate necesită în `.env`:
+Registrul include football-data.org, API-Football, Football-Data.co.uk, The Odds API, Odds-API.io (Superbet), OddsPapi (Superbet RO), OpenLigaDB, StatsBomb Open Data, Understat, Sportmonks Football API și Open-Meteo. Sursele protejate necesită în `.env`:
 
 ```env
 FOOTBALL_DATA_API_KEY=
 API_FOOTBALL_KEY=
 ODDS_API_KEY=
+ODDS_API_IO_KEY=
+ODDSPAPI_API_KEY=
 SPORTMONKS_API_TOKEN=
 ```
 
@@ -43,6 +70,12 @@ Prioritatea surselor este:
 3. Sportmonks pentru date avansate, fără suprascrierea sursei principale.
 4. Understat pentru xG/xGA în ligile unde există acoperire.
 5. Open-Meteo pentru context meteo cu pondere mică în analiză.
+
+Odds-API.io și OddsPapi sunt opționale, fiecare cu cheia sa. Ambele pot furniza instantanee de cote Superbet, care se păstrează separat în `source_records` și apar în „Sursa datelor” după configurarea cheii în `.env`. Nu suprascriu cotele sau identitatea meciurilor din sursele principale. Aceste API-uri nu oferă acces la istoricul biletelor personale Superbet; un URL de meci sau un instantaneu de cote nu dovedește ce selecție a fost plasată ori dacă biletul a câștigat.
+
+Cheile pentru sursele care necesită autentificare pot fi introduse și din **Admin → Chei pentru sursele de date**. Sunt criptate în coloana `data_sources.credential_secret` și au prioritate față de `.env`; valoarea nu este afișată niciodată în formular. Un câmp gol păstrează cheia existentă, iar „Elimină cheia” șterge doar valoarea din Admin și revine la `.env` dacă există. După deploy, rulează `php artisan migrate --force` și păstrează `APP_KEY` stabilă: schimbarea ei face cheile salvate imposibil de decriptat.
+
+După adăugarea `ODDS_API_IO_KEY` și/sau `ODDSPAPI_API_KEY` în `.env`, rulează `php artisan config:clear`, apoi folosește „Verifică acum” pentru sursa respectivă. În producție aplică mai întâi `php artisan migrate --force`. Importul asociază evenimentele numai când numele echipelor, competiția și ora de start (±15 minute) indică un singur meci BetLens; cele neasociate nu sunt atribuite automat unui meci greșit.
 
 Asocierea între furnizori folosește echipele, competiția și ora de start cu toleranță de maximum 15 minute. Conflictele sunt înregistrate în `data_sync_logs`, iar meciurile afectate sunt excluse din recomandări.
 
@@ -62,6 +95,8 @@ Butonul **Verifică acum** testează sursa și importă automat răspunsul în `
 php artisan queue:work
 php artisan schedule:work
 ```
+
+Butonul „Verifică acum” pornește un job în coadă și afișează progresul live în modal. Pentru asta trebuie să ruleze permanent un worker (de exemplu prin Supervisor/systemd) cu `php artisan queue:work --timeout=540`; `DB_QUEUE_RETRY_AFTER` trebuie să fie mai mare decât timeout-ul workerului (implicit 600 secunde). Fără worker, modalul arată că verificarea așteaptă în coadă.
 
 Schedulerul sincronizează fixtures Sportmonks orar, statisticile la șase ore, absențele zilnic și validează conflictele orar. Open-Meteo este actualizat zilnic pentru meciurile viitoare și la fiecare trei ore în ultimele 24 de ore înainte de start.
 
