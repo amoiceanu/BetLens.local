@@ -30,6 +30,14 @@ Route::middleware('ticket.auth')->group(function(){
 Route::get('/admin/login',[BetLensController::class,'adminLogin'])->name('admin.login');
 Route::post('/admin/login',[BetLensController::class,'adminAuthenticate'])->middleware('throttle:admin-login')->name('admin.authenticate');
 Route::middleware('admin.auth')->group(function(){
+    Route::get('/admin/acoperire', [\App\Http\Controllers\AdminCoverageController::class,'index'])->name('admin.coverage');
+    Route::get('/admin/acoperire/export', [\App\Http\Controllers\AdminCoverageController::class,'exportMatrix'])->name('admin.coverage.export');
+    Route::get('/admin/acoperire/surse/{source}', [\App\Http\Controllers\AdminCoverageController::class,'details'])->name('admin.coverage.details');
+    Route::get('/admin/acoperire/neconcordante', [\App\Http\Controllers\AdminCoverageController::class,'discrepancies'])->name('admin.coverage.discrepancies');
+    Route::get('/admin/acoperire/neconcordante/export', [\App\Http\Controllers\AdminCoverageController::class,'exportDiscrepancies'])->name('admin.coverage.discrepancies.export');
+    Route::get('/admin/acoperire/neconcordante/{discrepancy}', [\App\Http\Controllers\AdminCoverageController::class,'discrepancy'])->name('admin.coverage.discrepancy');
+    Route::patch('/admin/acoperire/neconcordante/{discrepancy}', [\App\Http\Controllers\AdminCoverageController::class,'review'])->middleware('throttle:30,1')->name('admin.coverage.review');
+
     Route::get('/admin/simulator', [AdminSimulatorController::class, 'index'])->name('admin.simulator');
     Route::get('/performanta',fn()=>redirect()->route('data-sources'))->name('performance');
     Route::get('/operatori',[OperatorController::class,'index'])->name('operators.index');

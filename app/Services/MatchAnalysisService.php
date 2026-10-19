@@ -175,7 +175,7 @@ class MatchAnalysisService
 
     private function history(League $league, ?CarbonInterface $before = null): array
     {
-        $rows = DB::table('matches as m')->join('match_results as r', 'r.match_id', '=', 'm.id')
+        $rows = DB::table('matches as m')->joinSub((new MatchResultHistory)->query(), 'r', 'r.match_id', '=', 'm.id')
             ->where('m.league_id', $league->id)
             ->when($before, fn ($query) => $query->where('m.kickoff_at', '<', $before))
             ->select('m.home_team_id', 'm.away_team_id', 'r.home_score', 'r.away_score')

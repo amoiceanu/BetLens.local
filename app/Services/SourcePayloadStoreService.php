@@ -12,14 +12,18 @@ class SourcePayloadStoreService
     {
         $new=$updated=$unchanged=0;
         DB::transaction(function()use($source,$type,$records,&$new,&$updated,&$unchanged){foreach($records as $index=>$payload){if(!is_array($payload))$payload=['value'=>$payload];$encoded=json_encode($payload,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);$checksum=hash('sha256',$encoded);$externalId=(string)($payload['external_id']??$payload['id']??hash('sha256',$encoded).':'.$index);$key=substr($type.':'.$externalId,0,191);$record=SourceRecord::where(['data_source_id'=>$source->id,'external_key'=>$key])->first();if(!$record){SourceRecord::create(['data_source_id'=>$source->id,'external_key'=>$key,'record_type'=>$type,'payload'=>$payload,'checksum'=>$checksum,'first_seen_at'=>now(),'last_seen_at'=>now()]);$new++;}elseif($record->checksum!==$checksum){$record->update(['payload'=>$payload,'checksum'=>$checksum,'last_seen_at'=>now()]);$updated++;}else{$record->update(['last_seen_at'=>now()]);$unchanged++;}}});
+        app(\App\Services\Coverage\ObservationProjector::class)->stored($source,$type,$records);
+        app(\App\Services\Coverage\ObservationProjector::class)->flush();
         return ['database'=>$source->records()->count(),'new'=>$new,'updated'=>$updated,'unchanged'=>$unchanged,'errors'=>0];
     }
 
     public function log(string $provider,string $type,string $status,int $records,string $message,float $started,array $metrics=[]): void
     {
+        $message=app(\App\Services\Coverage\SafeImportMessage::class)->clean($message);
+        app(\App\Services\Coverage\ObservationProjector::class)->flush();
         DB::table('data_sync_logs')->insert(['provider'=>$provider,'type'=>$type,'status'=>$status,'records'=>$records,'message'=>$message,'started_at'=>now()->subMilliseconds((int)((microtime(true)-$started)*1000)),'finished_at'=>now(),'created_at'=>now(),'updated_at'=>now()]);
         $job = collect(debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 8))
             ->pluck('class')->first(fn ($class) => is_string($class) && str_starts_with($class, 'App\\Jobs\\'));
-        app(ImportAuditService::class)->record($provider,$type,$status,$metrics,$message,$started,$job ?? $type);
+        app(ImportAuditService::class)->record($provider,$type,$status,$metrics+['read'=>$records],$message,$started,$job ?? $type);
     }
 }

@@ -27,7 +27,11 @@ class ImportAuditService
             'job_name' => 'VerifyDataSource', 'status' => $status, 'overall_status' => $overall,
             'imported_at' => $started, 'started_at' => $started, 'finished_at' => $finished ? now() : null,
             'records_new' => $new, 'records_updated' => $updated, 'records_deleted' => 0,
-            'records_imported' => $new + $updated, 'message' => $progress['message'] ?? null,
+            'records_imported' => $new + $updated,
+            'records_read' => $progress['detected'] ?? null,
+            'records_ignored' => $progress['unchanged'] ?? null,
+            'errors_count' => $progress['errors'] ?? null,
+            'message' => app(\App\Services\Coverage\SafeImportMessage::class)->clean($progress['message'] ?? null),
             'created_at' => $started, 'updated_at' => now(),
         ]);
     }
@@ -51,7 +55,12 @@ class ImportAuditService
             'records_updated' => $run->records_updated ?? 0,
             'records_deleted' => 0,
             'records_imported' => ($run->records_new ?? 0) + ($run->records_updated ?? 0),
-            'message' => $run->message,
+            'league_id' => $run->league_id,
+            'season_id' => $run->season_id,
+            'records_read' => $run->records_fetched,
+            'records_ignored' => $run->records_skipped,
+            'errors_count' => $run->records_errors,
+            'message' => app(\App\Services\Coverage\SafeImportMessage::class)->clean($run->message),
             'updated_at' => now(),
             'created_at' => $run->created_at,
         ]);
@@ -59,6 +68,7 @@ class ImportAuditService
 
     public function record(string $provider, string $type, string $status, array $metrics = [], ?string $message = null, ?float $started = null, ?string $jobName = null): void
     {
+        $message = app(\App\Services\Coverage\SafeImportMessage::class)->clean($message);
         $source = config('betlens.import_execution_source');
         $source = in_array($source, ['Laravel-local', 'Laravel-DO', 'Function-DO'], true) ? $source : 'Laravel-local';
         $overall = match ($status) {
@@ -80,8 +90,13 @@ class ImportAuditService
             'status' => $status,
             'overall_status' => $overall,
             'imported_at' => $finished,
-            'started_at' => $started === null ? $finished : $finished->copy()->subMilliseconds(max(0, (int) round((microtime(true) - $started) * 1000))),
-            'finished_at' => $finished,
+            'started_at' => $started === null ? ($metrics['started_at'] ?? $finished) : $finished->copy()->subMilliseconds(max(0, (int) round((microtime(true) - $started) * 1000))),
+            'finished_at' => $metrics['finished_at'] ?? $finished,
+            'league_id' => $metrics['league_id'] ?? null,
+            'season_id' => $metrics['season_id'] ?? null,
+            'records_read' => $metrics['read'] ?? null,
+            'records_ignored' => $metrics['unchanged'] ?? null,
+            'errors_count' => $metrics['errors'] ?? null,
             'records_new' => $new,
             'records_updated' => $updated,
             'records_deleted' => $metrics['deleted'] ?? 0,
