@@ -14,9 +14,10 @@ class OpenLigaDataImporter
     {
         $metrics=['leagues'=>0,'teams'=>0,'matches_new'=>0,'matches_updated'=>0,'results'=>0,'errors'=>[]];
         foreach(self::LEAGUES as $slug=>$shortcut){
-            $league=League::where('slug',$slug)->first(); if(!$league)continue;
-            try{$response=Http::acceptJson()->timeout(30)->retry(2,300,throw:false)->get("https://api.openligadb.de/getmatchdata/{$shortcut}/{$season}");if(!$response->successful()){throw new \RuntimeException("HTTP {$response->status()}");}$matches=$response->json();if(!is_array($matches))continue;$metrics['leagues']++;$seasonModel=Season::updateOrCreate(['league_id'=>$league->id,'name'=>$season.'/'.substr((string)($season+1),-2)],['starts_at'=>"{$season}-07-01",'ends_at'=>($season+1).'-06-30','current'=>true]);foreach($matches as $item)$this->importMatch($league,$seasonModel,$item,$metrics);}catch(\Throwable $e){$metrics['errors'][]=$league->name.': '.$e->getMessage();}
+            $league=League::where('slug',$slug)->first(); if(!$league)continue;$auditStarted=now();$before=$metrics;$seasonModel=null;
+            try{$response=Http::acceptJson()->timeout(30)->retry(2,300,throw:false)->get("https://api.openligadb.de/getmatchdata/{$shortcut}/{$season}");if(!$response->successful()){throw new \RuntimeException("HTTP {$response->status()}");}$matches=$response->json();if(!is_array($matches))continue;$metrics['leagues']++;$seasonModel=Season::updateOrCreate(['league_id'=>$league->id,'name'=>$season.'/'.substr((string)($season+1),-2)],['starts_at'=>"{$season}-07-01",'ends_at'=>($season+1).'-06-30','current'=>true]);foreach($matches as $item)$this->importMatch($league,$seasonModel,$item,$metrics);app(\App\Services\Coverage\ObservationProjector::class)->safely(fn()=>app(ImportAuditService::class)->record('openligadb','league_fixtures','healthy',['league_id'=>$league->id,'season_id'=>$seasonModel->id,'started_at'=>$auditStarted,'finished_at'=>now(),'read'=>count($matches),'new'=>$metrics['matches_new']-$before['matches_new'],'updated'=>$metrics['matches_updated']-$before['matches_updated'],'errors'=>0],'Import meciuri încheiat.'));}catch(\Throwable $e){$metrics['errors'][]=$league->name.': '.$e->getMessage();app(\App\Services\Coverage\ObservationProjector::class)->safely(fn()=>app(ImportAuditService::class)->record('openligadb','league_fixtures','unavailable',['league_id'=>$league->id,'season_id'=>$seasonModel?->id,'started_at'=>$auditStarted,'finished_at'=>now(),'errors'=>1],'Importul ligii nu a putut fi finalizat.'));}
         }
+        app(\App\Services\Coverage\ObservationProjector::class)->flush();
         return $metrics;
     }
     private function importMatch(League $league,Season $season,array $item,array &$metrics): void
@@ -35,6 +36,11 @@ class OpenLigaDataImporter
             if ($halfTime !== null && isset($halfTime[$key])) $values[$side.'_score_ht'] = $halfTime[$key];
         }
         GameActualResult::updateOrCreate(['game_id' => $match->id], $values);
+        $projector=app(\App\Services\Coverage\ObservationProjector::class);
+        $projector->safely(function()use($projector,$match,$home,$away,$values){
+            $source=\App\Models\DataSource::where('slug','openligadb')->first();
+            if($source)$projector->record($source,['external_id'=>substr($match->external_id,strlen('openligadb:')),'match_status'=>$values['match_status'],'values'=>['kickoff_at'=>$match->kickoff_at->copy()->utc()->toIso8601String(),'home_team'=>$home->name,'away_team'=>$away->name]+array_intersect_key($values,array_flip(\App\Models\GameActualResult::COMPARISON_COLUMNS))],$match,now());
+        });
         if ($fullTime !== null) $metrics['results']++;
 
     }

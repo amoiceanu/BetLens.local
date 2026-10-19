@@ -74,6 +74,8 @@ class VerifyDataSource implements ShouldQueue
     {
         $new=$updated=$unchanged=0;
         DB::transaction(function() use($source,$records,&$new,&$updated,&$unchanged){foreach($records as $index=>$payload){if(!is_array($payload))$payload=['value'=>$payload];$normalized=$this->normalize($payload);$encoded=json_encode($normalized,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);$checksum=hash('sha256',$encoded);$externalKey=$this->externalKey($normalized,$index);$record=SourceRecord::where('data_source_id',$source->id)->where('external_key',$externalKey)->first();if(!$record){SourceRecord::create(['data_source_id'=>$source->id,'external_key'=>$externalKey,'record_type'=>$this->recordType($source),'payload'=>$normalized,'checksum'=>$checksum,'first_seen_at'=>now(),'last_seen_at'=>now()]);$new++;}elseif($record->checksum!==$checksum){$record->update(['payload'=>$normalized,'checksum'=>$checksum,'last_seen_at'=>now()]);$updated++;}else{$record->update(['last_seen_at'=>now()]);$unchanged++;}}});
+        app(\App\Services\Coverage\ObservationProjector::class)->stored($source,$this->recordType($source),$records);
+        app(\App\Services\Coverage\ObservationProjector::class)->flush();
         return ['database'=>$source->records()->count(),'new'=>$new,'updated'=>$updated,'unchanged'=>$unchanged,'errors'=>0];
     }
     private function externalKey(array $record,int $index): string
@@ -87,8 +89,10 @@ class VerifyDataSource implements ShouldQueue
     private function normalize(array $value): array { foreach($value as &$item) if(is_array($item))$item=$this->normalize($item);unset($item);if(!array_is_list($value))ksort($value);return $value; }
     private function finish(DataSource $source,string $status,int $records,string $message,float $started,array $metrics=[]): void
     {
+        $message=app(\App\Services\Coverage\SafeImportMessage::class)->clean($message);
+        app(\App\Services\Coverage\ObservationProjector::class)->flush();
         $duration=(int)round((microtime(true)-$started)*1000);$source->update(['status'=>$status,'last_checked_at'=>now(),'last_duration_ms'=>$duration,'records_checked'=>$records,'last_message'=>$message,'last_database_records'=>$metrics['database']??0,'last_new_records'=>$metrics['new']??0,'last_updated_records'=>$metrics['updated']??0,'last_unchanged_records'=>$metrics['unchanged']??0,'last_error_records'=>$metrics['errors']??0]);
         DB::table('data_sync_logs')->insert(['provider'=>$source->slug,'type'=>'source_sync','status'=>$status,'records'=>$records,'message'=>$message,'started_at'=>now()->subMilliseconds($duration),'finished_at'=>now(),'created_at'=>now(),'updated_at'=>now()]);
-        app(ImportAuditService::class)->record($source->slug,'source_sync',$status,$metrics,$message);
+        app(ImportAuditService::class)->record($source->slug,'source_sync',$status,$metrics+['read'=>$records,'started_at'=>now()->subMilliseconds($duration),'finished_at'=>now()],$message);
     }
 }

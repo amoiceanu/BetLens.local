@@ -25,6 +25,14 @@ Route::post('/surse-date/{source}/verifica',[BetLensController::class,'verifyDat
 Route::get('/admin/login',[BetLensController::class,'adminLogin'])->name('admin.login');
 Route::post('/admin/login',[BetLensController::class,'adminAuthenticate'])->middleware('throttle:admin-login')->name('admin.authenticate');
 Route::middleware('admin.auth')->group(function(){
+    Route::get('/admin/acoperire', [\App\Http\Controllers\AdminCoverageController::class,'index'])->name('admin.coverage');
+    Route::get('/admin/acoperire/export', [\App\Http\Controllers\AdminCoverageController::class,'exportMatrix'])->name('admin.coverage.export');
+    Route::get('/admin/acoperire/surse/{source}', [\App\Http\Controllers\AdminCoverageController::class,'details'])->name('admin.coverage.details');
+    Route::get('/admin/acoperire/neconcordante', [\App\Http\Controllers\AdminCoverageController::class,'discrepancies'])->name('admin.coverage.discrepancies');
+    Route::get('/admin/acoperire/neconcordante/export', [\App\Http\Controllers\AdminCoverageController::class,'exportDiscrepancies'])->name('admin.coverage.discrepancies.export');
+    Route::get('/admin/acoperire/neconcordante/{discrepancy}', [\App\Http\Controllers\AdminCoverageController::class,'discrepancy'])->name('admin.coverage.discrepancy');
+    Route::patch('/admin/acoperire/neconcordante/{discrepancy}', [\App\Http\Controllers\AdminCoverageController::class,'review'])->middleware('throttle:30,1')->name('admin.coverage.review');
+
     Route::get('/admin/mindmap', [\App\Http\Controllers\AdminMindmapController::class, 'index'])->name('admin.mindmap');
     Route::post('/admin/mindmap/sources', [\App\Http\Controllers\AdminMindmapController::class, 'store'])->middleware('throttle:10,1')->name('admin.mindmap.store');
     Route::post('/admin/mindmap/sources/{source}/import', [\App\Http\Controllers\AdminMindmapController::class, 'import'])->middleware('throttle:5,1')->name('admin.mindmap.import');
