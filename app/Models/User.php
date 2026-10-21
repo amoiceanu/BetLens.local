@@ -12,6 +12,14 @@ class User extends Authenticatable
     /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasFactory, Notifiable;
 
+    /** Keep auth users in the unprefixed system table, while imported data uses st_. */
+    public function getConnectionName()
+    {
+        return config('database.default') === 'mysql' && config('database.connections.mysql.prefix') === 'st_'
+            ? 'mysql_auth'
+            : parent::getConnectionName();
+    }
+
     /**
      * The attributes that are mass assignable.
      *

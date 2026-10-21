@@ -29,6 +29,24 @@ class SourceCoverageTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_coverage_query_applies_prefixed_table_aliases_to_raw_expressions(): void
+    {
+        $connection = DB::connection();
+        $originalPrefix = $connection->getTablePrefix();
+
+        try {
+            $connection->setTablePrefix('st_');
+            $sql = app(CoverageMatrix::class)->query([])->toSql();
+
+            $this->assertStringContainsString('st_unknown_league.id as league_id', $sql);
+            $this->assertStringContainsString('st_d.source_a_id as source_id', $sql);
+            $this->assertStringContainsString('st_c.season_id = st_se.id', $sql);
+            $this->assertStringContainsString('st_sa.latest_id', $sql);
+        } finally {
+            $connection->setTablePrefix($originalPrefix);
+        }
+    }
+
     private function admin(): static
     {
         $this->withSession(['admin_user_id' => User::factory()->create(['is_admin' => true])->id]);
@@ -100,7 +118,10 @@ class SourceCoverageTest extends TestCase
         $row = app(CoverageMatrix::class)->present($query->first());
         $this->assertSame(100.0, $row->percent);
         $this->assertSame(1, $row->denominator);
-        $this->admin()->get(route('admin.coverage', ['source' => $source->id, 'league' => $game->league_id, 'field' => 'home_corners']))->assertOk()->assertSee('Suportat, neacoperit');
+        $profile = app(\App\Services\Coverage\FieldRegistry::class)->profile('api-football');
+        $this->assertArrayHasKey('home_corners', $profile);
+        $this->assertArrayNotHasKey('temperature_c', $profile);
+        $this->admin()->get(route('admin.coverage', ['source' => $source->id, 'league' => $game->league_id, 'field' => 'home_corners']))->assertOk()->assertSee('0 din 1 valori aplicabile');
     }
 
     public function test_conflicts_are_stable_ignored_resolved_and_reopened_without_overwriting_sources(): void

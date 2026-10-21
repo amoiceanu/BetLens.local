@@ -11,13 +11,14 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('cache', function (Blueprint $table) {
+        $schema = config('database.default') === 'mysql' && config('database.connections.mysql.prefix') === 'st_' ? Schema::connection('mysql_auth') : Schema::getFacadeRoot();
+        $schema->create('cache', function (Blueprint $table) {
             $table->string('key')->primary();
             $table->mediumText('value');
             $table->integer('expiration');
         });
 
-        Schema::create('cache_locks', function (Blueprint $table) {
+        $schema->create('cache_locks', function (Blueprint $table) {
             $table->string('key')->primary();
             $table->string('owner');
             $table->integer('expiration');
@@ -29,7 +30,8 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('cache');
-        Schema::dropIfExists('cache_locks');
+        $schema = config('database.default') === 'mysql' && config('database.connections.mysql.prefix') === 'st_' ? Schema::connection('mysql_auth') : Schema::getFacadeRoot();
+        $schema->dropIfExists('cache');
+        $schema->dropIfExists('cache_locks');
     }
 };

@@ -46,6 +46,46 @@ class ImportAuditPageTest extends TestCase
             ->assertSee('Trei înregistrări sincronizate');
     }
 
+    public function test_admin_can_filter_audit_history_by_distinct_job_name(): void
+    {
+        $audit = app(ImportAuditService::class);
+        $audit->record('football-data', 'fixtures', 'healthy', ['new' => 1], 'Rulare fixtures', null, 'App\\Jobs\\VerifyDataSource');
+        $audit->record('openligadb', 'results', 'healthy', ['new' => 1], 'Rulare rezultate', null, 'App\\Jobs\\ImportOpenLigaCurrentSeason');
+        $admin = User::factory()->create(['is_admin' => true]);
+
+        $this->withSession(['admin_user_id' => $admin->id])
+            ->get(route('admin.import-audit', ['job' => 'App\\Jobs\\VerifyDataSource']))
+            ->assertOk()
+            ->assertSee('value="App\\Jobs\\VerifyDataSource" selected', false)
+            ->assertSee('football-data')
+            ->assertDontSee('Rulare rezultate')
+            ->assertSee('Resetează');
+
+        $this->withSession(['admin_user_id' => $admin->id])
+            ->get(route('admin.import-audit'))
+            ->assertOk()
+            ->assertSee('App\\Jobs\\VerifyDataSource')
+            ->assertSee('App\\Jobs\\ImportOpenLigaCurrentSeason');
+    }
+
+    public function test_admin_can_filter_audit_history_by_provider_and_job_together(): void
+    {
+        $audit = app(ImportAuditService::class);
+        $audit->record('football-data', 'fixtures', 'healthy', ['new' => 1], 'Doar furnizorul ales', null, 'App\\Jobs\\VerifyDataSource');
+        $audit->record('openligadb', 'results', 'healthy', ['new' => 1], 'Alt furnizor', null, 'App\\Jobs\\VerifyDataSource');
+        $admin = User::factory()->create(['is_admin' => true]);
+
+        $this->withSession(['admin_user_id' => $admin->id])
+            ->get(route('admin.import-audit', ['job' => 'App\\Jobs\\VerifyDataSource', 'provider' => 'football-data']))
+            ->assertOk()
+            ->assertSee('Furnizor')
+            ->assertSee('value="football-data" selected', false)
+            ->assertSee('Doar furnizorul ales')
+            ->assertDontSee('Alt furnizor')
+            ->assertSee('Aplică filtrul')
+            ->assertSee('Resetează');
+    }
+
     public function test_l5_reimport_creates_one_audit_entry_and_updates_it_on_completion(): void
     {
         Queue::fake();

@@ -33,11 +33,10 @@ class MindmapData
             $type = $meta['type'] ?? $type;
             $last = $source ? DB::table('data_sync_logs')->where('provider', $slug)->where('type', 'source_sync')->latest('finished_at')->first() : null;
             $levels = $source?->levels->pluck('level')->all() ?? [];
+            $levels = array_values(array_filter($levels, fn ($level) => SourceCatalog::levelApplies($slug, (int) $level)));
             $latestRun = $source?->importRuns()->latest()->first();
             $lastSuccessfulRun = $source?->importRuns()->where('status', 'completed')->latest()->first();
-            $configured = $slug === 'api-football'
-                ? app(\App\Services\Imports\DigitalOceanFunctionService::class)->configured('api_football_l1')
-                : ($source?->is_configured ?? false);
+            $configured = $source?->is_configured ?? false;
             $status = $source?->import_method === 'unsupported' ? 'unsupported' : (! $source?->active ? 'inactive' : (! $source?->import_enabled ? 'inactive' : (! $configured ? 'not_configured' : (in_array($latestRun?->status, ['queued', 'running']) ? 'checking' : ($source?->status === 'not_configured' ? 'never_checked' : $source?->status)))));
             $coverage = $leagueId ? DB::table('data_source_competitions')->where('data_source_id', $source->id)->where('league_id', $leagueId)->first() : null;
             $rows[] = [

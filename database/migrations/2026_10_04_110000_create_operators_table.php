@@ -9,7 +9,8 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('operators', function (Blueprint $table) {
+        $systemSchema = config('database.default') === 'mysql' && config('database.connections.mysql.prefix') === 'st_' ? Schema::connection('mysql_auth') : Schema::getFacadeRoot();
+        $systemSchema->create('operators', function (Blueprint $table) {
             $table->id();
             $table->string('name')->unique();
             $table->string('slug')->unique();
@@ -18,7 +19,7 @@ return new class extends Migration
             $table->timestamps();
         });
 
-        DB::table('operators')->insert([
+        (config('database.default') === 'mysql' && config('database.connections.mysql.prefix') === 'st_' ? DB::connection('mysql_auth') : DB::connection())->table('operators')->insert([
             ['name'=>'Winbet','slug'=>'winbet','website_url'=>'https://winbet.ro/','active'=>true,'created_at'=>now(),'updated_at'=>now()],
             ['name'=>'Superbet','slug'=>'superbet','website_url'=>'https://superbet.ro/','active'=>true,'created_at'=>now(),'updated_at'=>now()],
         ]);
@@ -26,6 +27,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::dropIfExists('operators');
+        (config('database.default') === 'mysql' && config('database.connections.mysql.prefix') === 'st_' ? Schema::connection('mysql_auth') : Schema::getFacadeRoot())->dropIfExists('operators');
     }
 };

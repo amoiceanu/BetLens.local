@@ -42,7 +42,7 @@ class OperatorController extends Controller
     private function validated(Request $request,?Operator $operator=null): array
     {
         return $request->validate([
-            'name'=>['required','string','max:100',Rule::unique('operators','name')->ignore($operator?->id)],
+            'name'=>['required','string','max:100',Rule::unique((config('database.default') === 'mysql' && config('database.connections.mysql.prefix') === 'st_' ? 'mysql_auth.' : '').'operators','name')->ignore($operator?->id)],
             'website_url'=>'nullable|url:http,https|max:255',
             'active'=>'required|boolean',
         ],[

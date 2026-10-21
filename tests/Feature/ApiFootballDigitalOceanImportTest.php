@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Jobs\ImportApiFootballFromDigitalOcean;
+use App\Jobs\ImportApiFootballLocally;
 use App\Models\DataSource;
 use App\Models\ImportRun;
 use App\Models\SourceRecord;
@@ -24,7 +25,9 @@ class ApiFootballDigitalOceanImportTest extends TestCase
     {
         parent::setUp();
         config(['services.digitalocean_functions.api_football_l1.url' => 'https://functions.example.test/api-football',
-            'services.digitalocean_functions.api_football_l1.token' => 'secret-test-token']);
+            'services.digitalocean_functions.api_football_l1.token' => 'secret-test-token',
+            'services.api_football.key' => 'local-test-key',
+            'services.api_football.base_url' => 'https://v3.football.api-sports.io']);
         Http::preventStrayRequests();
     }
 
@@ -100,11 +103,11 @@ class ApiFootballDigitalOceanImportTest extends TestCase
             'first_seen_at' => now(), 'last_seen_at' => now()]);
         $manager = app(ImportManager::class);
         $run = $manager->enqueue($source);
-        Queue::assertPushed(ImportApiFootballFromDigitalOcean::class,
-            fn ($job) => $job->runId === $run->id && $job->queue === 'betlens-api-football-l1');
+        Queue::assertPushed(ImportApiFootballLocally::class,
+            fn ($job) => $job->runId === $run->id);
         $this->assertDatabaseHas('import_audits', ['import_run_id' => $run->id, 'overall_status' => 'queued']);
-        Http::fake(['functions.example.test/*' => Http::response(['statusCode' => 200, 'body' => ['response' => [$this->payload()]]], 200)]);
-        app()->call([new ImportApiFootballFromDigitalOcean($run->id), 'handle']);
+        Http::fake(['v3.football.api-sports.io/*' => Http::response(['response' => [$this->payload()]], 200)]);
+        app()->call([new ImportApiFootballLocally($run->id), 'handle']);
         $this->assertSame('completed', $run->fresh()->status);
         $this->assertSame(2, $run->fresh()->records_new);
         $this->assertSame(1, $run->fresh()->metadata['competitions_saved']);
@@ -116,10 +119,27 @@ class ApiFootballDigitalOceanImportTest extends TestCase
         $this->assertSame('Other provider', SourceRecord::where('data_source_id', $other->id)->firstOrFail()->payload['name']);
 
         $second = $manager->enqueue($source);
-        app()->call([new ImportApiFootballFromDigitalOcean($second->id), 'handle']);
+        app()->call([new ImportApiFootballLocally($second->id), 'handle']);
         $this->assertSame(0, $second->fresh()->records_new);
         $this->assertSame(2, $second->fresh()->records_unchanged);
         $this->assertSame(2, SourceRecord::where('data_source_id', $source->id)->count());
+    }
+
+    public function test_master_import_routes_api_football_to_local_php_without_function_configuration(): void
+    {
+        Queue::fake();
+        config(['services.api_football.key' => 'local-test-key',
+            'services.digitalocean_functions.api_football_l1.url' => null,
+            'services.digitalocean_functions.api_football_l1.token' => null]);
+        $source = DataSource::where('slug', 'api-football')->firstOrFail();
+
+        $this->assertTrue(app(ImportManager::class)->canImport($source));
+        $run = app(ImportManager::class)->enqueue($source);
+
+        $this->assertSame('api_football_local', $run->import_method);
+        $this->assertNull($run->function_name);
+        Queue::assertPushed(ImportApiFootballLocally::class, fn ($job) => $job->runId === $run->id);
+        Queue::assertNotPushed(ImportApiFootballFromDigitalOcean::class);
     }
 
     public function test_admin_import_route_is_protected_and_connection_test_does_not_write(): void
@@ -128,7 +148,8 @@ class ApiFootballDigitalOceanImportTest extends TestCase
         $this->postJson(route('admin.mindmap.import', $source))->assertRedirect(route('user.login'));
         $admin = User::factory()->create(['is_admin' => true]);
         $this->withSession(['admin_user_id' => $admin->id]);
-        Http::fake(['functions.example.test/*' => Http::response([$this->payload()], 200)]);
+        config(['services.api_football.key' => 'local-test-key']);
+        Http::fake(['v3.football.api-sports.io/*' => Http::response(['response' => [$this->payload()]], 200)]);
         $this->postJson(route('admin.mindmap.source.test', $source))->assertOk()->assertJsonPath('status', 'success');
         $this->assertDatabaseCount('source_records', 0);
     }
@@ -140,6 +161,6 @@ class ApiFootballDigitalOceanImportTest extends TestCase
         $league = \App\Models\League::create(['name' => 'Liga test', 'slug' => 'liga-test', 'code' => 'TST']);
         $run = app(ImportManager::class)->enqueue($source, $league->id);
         $this->assertNull($run->league_id);
-        Queue::assertPushed(ImportApiFootballFromDigitalOcean::class);
+        Queue::assertPushed(ImportApiFootballLocally::class);
     }
 }

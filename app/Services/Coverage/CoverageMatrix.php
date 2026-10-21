@@ -10,6 +10,11 @@ class CoverageMatrix
 {
     public const STATES = ['complete' => 'Completă', 'partial' => 'Parțială', 'old' => 'Date vechi', 'conflict' => 'Cu neconcordanțe', 'empty' => 'Fără date'];
 
+    private function alias(string $alias): string
+    {
+        return DB::connection()->getTablePrefix().$alias;
+    }
+
     private function auditAggregate(string $table, bool $scoped): Builder
     {
         $time = $scoped ? 'COALESCE(finished_at, imported_at)' : 'finished_at';
@@ -27,34 +32,45 @@ class CoverageMatrix
 
     public function expressions(?string $field = null): array
     {
-        $present = 'COALESCE(c.completed_slots,0)';
-        $eligible = 'COALESCE(c.expected_slots,0)';
+        $c = $this->alias('c');
+        $sa = $this->alias('sa');
+        $ga = $this->alias('ga');
+        $dc = $this->alias('dc');
+        $present = "COALESCE({$c}.completed_slots,0)";
+        $eligible = "COALESCE({$c}.expected_slots,0)";
         if ($field) { // The field is validated against the central registry before reaching SQL.
-            $present = "COALESCE(JSON_EXTRACT(c.available_counts, '$.{$field}'),0)";
-            $eligible = "COALESCE(JSON_EXTRACT(c.eligible_counts, '$.{$field}'),0)";
+            $present = "COALESCE(JSON_EXTRACT({$c}.available_counts, '$.{$field}'),0)";
+            $eligible = "COALESCE(JSON_EXTRACT({$c}.eligible_counts, '$.{$field}'),0)";
         }
-        $success = 'CASE WHEN sa.latest_id IS NOT NULL THEN sa.last_success ELSE ga.last_success END';
-        $state = "CASE WHEN COALESCE(dc.conflict_count,0)>0 THEN 'conflict' WHEN COALESCE(c.found_count,0)=0 OR {$eligible}=0 OR {$present}=0 THEN 'empty' WHEN {$success} IS NOT NULL AND {$success} < ? THEN 'old' WHEN {$present} >= {$eligible} THEN 'complete' ELSE 'partial' END";
+        $success = "CASE WHEN {$sa}.latest_id IS NOT NULL THEN {$sa}.last_success ELSE {$ga}.last_success END";
+        $state = "CASE WHEN COALESCE({$dc}.conflict_count,0)>0 THEN 'conflict' WHEN COALESCE({$c}.found_count,0)=0 OR {$eligible}=0 OR {$present}=0 THEN 'empty' WHEN {$success} IS NOT NULL AND {$success} < ? THEN 'old' WHEN {$present} >= {$eligible} THEN 'complete' ELSE 'partial' END";
 
         return compact('present', 'eligible', 'success', 'state');
     }
 
     public function query(array $filters): Builder
     {
+        $d = $this->alias('d');
+        $m = $this->alias('m');
+        $unknownLeague = $this->alias('unknown_league');
+        $c = $this->alias('c');
+        $se = $this->alias('se');
+        $sa = $this->alias('sa');
+        $dc = $this->alias('dc');
         $conflicts = DB::table('source_data_discrepancies as d')->join('matches as m', 'm.id', '=', 'd.game_id')
-            ->selectRaw('d.source_a_id as source_id,m.league_id,m.season_id,d.id')->where('d.status', 'new');
+            ->selectRaw("{$d}.source_a_id as source_id,{$m}.league_id,{$m}.season_id,{$d}.id")->where('d.status', 'new');
         $other = DB::table('source_data_discrepancies as d')->join('matches as m', 'm.id', '=', 'd.game_id')
-            ->selectRaw('d.source_b_id as source_id,m.league_id,m.season_id,d.id')->where('d.status', 'new');
+            ->selectRaw("{$d}.source_b_id as source_id,{$m}.league_id,{$m}.season_id,{$d}.id")->where('d.status', 'new');
         $counts = DB::query()->fromSub($conflicts->unionAll($other), 'pairs')->select('source_id', 'league_id', 'season_id')->selectRaw('COUNT(*) as conflict_count')->groupBy('source_id', 'league_id', 'season_id');
         $seasons = DB::table('seasons')->select('id', 'league_id', 'name', 'starts_at');
-        $unknownSeasons = DB::table('leagues as unknown_league')->selectRaw('NULL as id, unknown_league.id as league_id, NULL as name, NULL as starts_at')->whereExists(fn ($q) => $q->selectRaw('1')->from('source_coverage_cells')->whereColumn('league_id', 'unknown_league.id')->whereNull('season_id'));
+        $unknownSeasons = DB::table('leagues as unknown_league')->selectRaw("NULL as id, {$unknownLeague}.id as league_id, NULL as name, NULL as starts_at")->whereExists(fn ($q) => $q->selectRaw('1')->from('source_coverage_cells')->whereColumn('league_id', 'unknown_league.id')->whereNull('season_id'));
         $query = DB::table('data_sources as s')->crossJoin('leagues as l')->leftJoinSub($seasons->unionAll($unknownSeasons), 'se', fn ($join) => $join->on('se.league_id', '=', 'l.id'))
-            ->leftJoin('source_coverage_cells as c', fn ($join) => $join->on('c.data_source_id', '=', 's.id')->on('c.league_id', '=', 'l.id')->whereRaw('(c.season_id = se.id OR (c.season_id IS NULL AND se.id IS NULL))'))
+            ->leftJoin('source_coverage_cells as c', fn ($join) => $join->on('c.data_source_id', '=', 's.id')->on('c.league_id', '=', 'l.id')->whereRaw("({$c}.season_id = {$se}.id OR ({$c}.season_id IS NULL AND {$se}.id IS NULL))"))
             ->leftJoinSub($this->auditAggregate('data_sync_logs', false), 'ga', fn ($join) => $join->on('ga.provider', '=', 's.slug'))
             ->leftJoin('data_sync_logs as gl', 'gl.id', '=', 'ga.latest_id')
-            ->leftJoinSub($this->auditAggregate('import_audits', true), 'sa', fn ($join) => $join->on('sa.provider', '=', 's.slug')->on('sa.league_id', '=', 'l.id')->whereRaw('(sa.season_id = se.id OR (sa.season_id IS NULL AND se.id IS NULL))'))
+            ->leftJoinSub($this->auditAggregate('import_audits', true), 'sa', fn ($join) => $join->on('sa.provider', '=', 's.slug')->on('sa.league_id', '=', 'l.id')->whereRaw("({$sa}.season_id = {$se}.id OR ({$sa}.season_id IS NULL AND {$se}.id IS NULL))"))
             ->leftJoin('import_audits as sl', 'sl.id', '=', 'sa.latest_id')
-            ->leftJoinSub($counts, 'dc', fn ($join) => $join->on('dc.source_id', '=', 's.id')->on('dc.league_id', '=', 'l.id')->whereRaw('(dc.season_id = se.id OR (dc.season_id IS NULL AND se.id IS NULL))'));
+            ->leftJoinSub($counts, 'dc', fn ($join) => $join->on('dc.source_id', '=', 's.id')->on('dc.league_id', '=', 'l.id')->whereRaw("({$dc}.season_id = {$se}.id OR ({$dc}.season_id IS NULL AND {$se}.id IS NULL))"));
         foreach (['source' => 's.id', 'league' => 'l.id', 'season' => 'se.id'] as $key => $column) {
             if (! empty($filters[$key])) {
                 $query->where($column, (int) $filters[$key]);
@@ -80,7 +96,12 @@ class CoverageMatrix
             $query->whereRaw("({$state}) = ?", [$cutoff, $filters['state']]);
         }
 
-        return $query->selectRaw("s.id as source_id,s.name as source_name,s.slug as provider,l.id as league_id,l.name as league_name,se.id as season_id,se.name as season_name,c.observed_count,c.found_count,c.scheduled_count,c.ambiguous_count,c.available_counts,c.eligible_counts,c.last_observation_at,{$present} as numerator,{$eligible} as denominator,{$success} as last_success,COALESCE(dc.conflict_count,0) as conflict_count,CASE WHEN sa.latest_id IS NOT NULL THEN sa.recent_errors ELSE ga.recent_errors END as recent_errors,CASE WHEN sa.latest_id IS NOT NULL THEN COALESCE(sl.finished_at,sl.started_at,sl.imported_at) ELSE COALESCE(gl.finished_at,gl.started_at) END as last_attempt,CASE WHEN sa.latest_id IS NOT NULL THEN sl.status ELSE gl.status END as attempt_status,CASE WHEN sa.latest_id IS NOT NULL THEN sa.first_success ELSE ga.first_success END as first_success,CASE WHEN sa.latest_id IS NOT NULL THEN sa.success_times ELSE ga.success_times END as success_times,CASE WHEN sa.latest_id IS NOT NULL THEN sa.success_types ELSE ga.success_types END as success_types,CASE WHEN sa.latest_id IS NOT NULL THEN 'league' ELSE 'global' END as audit_scope,{$state} as coverage_state", [$cutoff]);
+        $s = $this->alias('s');
+        $l = $this->alias('l');
+        $ga = $this->alias('ga');
+        $sl = $this->alias('sl');
+        $gl = $this->alias('gl');
+        return $query->selectRaw("{$s}.id as source_id,{$s}.name as source_name,{$s}.slug as provider,{$s}.import_method,{$s}.active as source_active,{$s}.import_enabled,{$l}.id as league_id,{$l}.name as league_name,{$se}.id as season_id,{$se}.name as season_name,{$c}.observed_count,{$c}.found_count,{$c}.scheduled_count,{$c}.ambiguous_count,{$c}.available_counts,{$c}.eligible_counts,{$c}.last_observation_at,{$present} as numerator,{$eligible} as denominator,{$success} as last_success,COALESCE({$dc}.conflict_count,0) as conflict_count,CASE WHEN {$sa}.latest_id IS NOT NULL THEN {$sa}.recent_errors ELSE {$ga}.recent_errors END as recent_errors,CASE WHEN {$sa}.latest_id IS NOT NULL THEN COALESCE({$sl}.finished_at,{$sl}.started_at,{$sl}.imported_at) ELSE COALESCE({$gl}.finished_at,{$gl}.started_at) END as last_attempt,CASE WHEN {$sa}.latest_id IS NOT NULL THEN {$sl}.status ELSE {$gl}.status END as attempt_status,CASE WHEN {$sa}.latest_id IS NOT NULL THEN {$sa}.first_success ELSE {$ga}.first_success END as first_success,CASE WHEN {$sa}.latest_id IS NOT NULL THEN {$sa}.success_times ELSE {$ga}.success_times END as success_times,CASE WHEN {$sa}.latest_id IS NOT NULL THEN {$sa}.success_types ELSE {$ga}.success_types END as success_types,CASE WHEN {$sa}.latest_id IS NOT NULL THEN 'league' ELSE 'global' END as audit_scope,{$state} as coverage_state", [$cutoff]);
     }
 
     public function present(object $row): object

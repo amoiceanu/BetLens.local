@@ -41,6 +41,8 @@ Route::middleware('admin.auth')->group(function(){
     Route::get('/admin/simulator', [AdminSimulatorController::class, 'index'])->name('admin.simulator');
     Route::get('/admin/meciuri-viitoare', [\App\Http\Controllers\AdminUpcomingMatchesController::class, 'index'])->name('admin.upcoming-matches');
     Route::post('/admin/meciuri-viitoare/import', [\App\Http\Controllers\AdminUpcomingMatchesController::class, 'import'])->middleware('throttle:2,1')->name('admin.upcoming-matches.import');
+    Route::get('/admin/meciuri-trecute', [\App\Http\Controllers\AdminUpcomingMatchesController::class, 'past'])->name('admin.past-matches');
+    Route::post('/admin/meciuri-trecute/actualizeaza', [\App\Http\Controllers\AdminUpcomingMatchesController::class, 'refreshPast'])->middleware('throttle:2,1')->name('admin.past-matches.refresh');
     Route::get('/admin/meciuri-viitoare/import/{run}/progress', [\App\Http\Controllers\AdminUpcomingMatchesController::class, 'progress'])->middleware('throttle:120,1')->name('admin.upcoming-matches.progress');
     Route::get('/performanta',fn()=>redirect()->route('data-sources'))->name('performance');
     Route::get('/operatori',[OperatorController::class,'index'])->name('operators.index');
@@ -48,8 +50,15 @@ Route::middleware('admin.auth')->group(function(){
     Route::patch('/operatori/{operator}',[OperatorController::class,'update'])->name('operators.update');
     Route::delete('/operatori/{operator}',[OperatorController::class,'destroy'])->name('operators.destroy');
     Route::get('/surse-date',[BetLensController::class,'dataSources'])->name('data-sources');
+    Route::post('/surse-date/master-import',[\App\Http\Controllers\MasterImportController::class,'start'])->middleware('throttle:30,1')->name('data-sources.master-import.start');
+    Route::post('/surse-date/master-import/{master}/resume',[\App\Http\Controllers\MasterImportController::class,'resume'])->middleware('throttle:5,1')->name('data-sources.master-import.resume');
+    Route::post('/surse-date/master-import/{master}/recover',[\App\Http\Controllers\MasterImportController::class,'recover'])->middleware('throttle:3,1')->name('data-sources.master-import.recover');
+    Route::post('/surse-date/master-import/{master}/cancel',[\App\Http\Controllers\MasterImportController::class,'cancel'])->middleware('throttle:5,1')->name('data-sources.master-import.cancel');
+    Route::get('/surse-date/master-import/{master}/progress',[\App\Http\Controllers\MasterImportController::class,'progress'])->middleware('throttle:120,1')->name('data-sources.master-import.progress');
     Route::get('/admin/audit-importuri',[BetLensController::class,'importAudit'])->name('admin.import-audit');
     Route::delete('/admin/audit-importuri/{audit}',[BetLensController::class,'destroyImportAudit'])->name('admin.import-audit.destroy');
+    Route::get('/admin/failed-jobs', [\App\Http\Controllers\AdminFailedJobsController::class, 'index'])->name('admin.failed-jobs');
+    Route::delete('/admin/failed-jobs/{id}', [\App\Http\Controllers\AdminFailedJobsController::class, 'destroy'])->whereNumber('id')->name('admin.failed-jobs.destroy');
     Route::post('/surse-date/{source}/verifica',[BetLensController::class,'verifyDataSource'])->middleware('throttle:10,1')->name('data-sources.verify');
     Route::get('/surse-date/{source}/progres',[BetLensController::class,'dataSourceProgress'])->middleware('throttle:120,1')->name('data-sources.progress');
     Route::get('/admin/mindmap', [AdminImportCenterController::class, 'index'])->name('admin.mindmap');
@@ -72,7 +81,11 @@ Route::middleware('admin.auth')->group(function(){
     Route::put('/admin/setari',[BetLensController::class,'settings'])->name('admin.settings');
     Route::put('/admin/surse/{source}/cheie',[BetLensController::class,'updateDataSourceKey'])->middleware('throttle:10,1')->name('admin.sources.key');
     Route::get('/admin/aliasuri',[TeamAliasController::class,'index'])->name('admin.aliases.index');
+    Route::get('/admin/aliasuri/echipe',[TeamAliasController::class,'teams'])->name('admin.aliases.teams');
+    Route::get('/admin/aliasuri/normalize',[TeamAliasController::class,'normalize'])->name('admin.aliases.normalize');
+    Route::get('/admin/aliasuri/export',[TeamAliasController::class,'export'])->name('admin.aliases.export');
     Route::post('/admin/aliasuri',[TeamAliasController::class,'store'])->name('admin.aliases.store');
+    Route::delete('/admin/aliasuri/bulk',[TeamAliasController::class,'destroyMany'])->name('admin.aliases.bulk-destroy');
     Route::patch('/admin/aliasuri/{teamAlias}',[TeamAliasController::class,'update'])->name('admin.aliases.update');
     Route::delete('/admin/aliasuri/{teamAlias}',[TeamAliasController::class,'destroy'])->name('admin.aliases.destroy');
 });

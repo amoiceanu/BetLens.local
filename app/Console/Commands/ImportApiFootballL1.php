@@ -44,7 +44,7 @@ class ImportApiFootballL1 extends Command
             $id = (int) $this->option('reconcile-run');
             $run = ImportRun::whereKey($id)->where('data_source_id', $source->id)
                 ->where('import_method', 'digitalocean_function')->where('status', 'queued')->first();
-            $failed = $run && DB::table('failed_jobs')->where('exception', 'like', '%ImportApiFootballFromDigitalOcean%')
+            $failed = $run && DB::connection('mysql_auth')->table('failed_jobs')->where('exception', 'like', '%ImportApiFootballFromDigitalOcean%')
                 ->where('exception', 'like', '%"runId":'.$id.'%')->exists();
             if (! $run || ! $failed) {
                 $this->error('Rularea nu este în coadă sau nu are un job eșuat confirmat.');
@@ -68,12 +68,12 @@ class ImportApiFootballL1 extends Command
             $this->line('Saved Romanian competitions: '.SourceRecord::where('data_source_id', $source->id)->where('record_type', 'api_football_competition')->count());
             $this->line('Saved seasons: '.SourceRecord::where('data_source_id', $source->id)->where('record_type', 'api_football_season')->count());
             $this->line('Queue connection: '.config('queue.default'));
-            if (DB::getSchemaBuilder()->hasTable('jobs')) {
-                $this->line('Queued jobs: '.DB::table('jobs')->count());
+            if (DB::connection('mysql_auth')->getSchemaBuilder()->hasTable('jobs')) {
+                $this->line('Queued jobs: '.DB::connection('mysql_auth')->table('jobs')->count());
             }
-            if (DB::getSchemaBuilder()->hasTable('failed_jobs')) {
-                $this->line('Failed jobs: '.DB::table('failed_jobs')->count());
-                $failed = DB::table('failed_jobs')->latest('id')->first();
+            if (DB::connection('mysql_auth')->getSchemaBuilder()->hasTable('failed_jobs')) {
+                $this->line('Failed jobs: '.DB::connection('mysql_auth')->table('failed_jobs')->count());
+                $failed = DB::connection('mysql_auth')->table('failed_jobs')->latest('id')->first();
                 if ($failed) $this->line('Last failed job: #'.$failed->id.' '.strtok((string) $failed->exception, "\n"));
             }
             return self::SUCCESS;

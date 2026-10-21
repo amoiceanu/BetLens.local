@@ -13,6 +13,8 @@ class DatabaseSeeder extends Seeder
             ['name'=>'La Liga','slug'=>'la-liga','country'=>'Spania','code'=>'LL','accent'=>'#fb7185'],
             ['name'=>'Serie A','slug'=>'serie-a','country'=>'Italia','code'=>'SA','accent'=>'#60a5fa'],
             ['name'=>'Bundesliga','slug'=>'bundesliga','country'=>'Germania','code'=>'BL','accent'=>'#f87171'],
+            ['name'=>'2. Bundesliga','slug'=>'zweite-bundesliga','country'=>'Germania','code'=>'2BL','accent'=>'#ef4444'],
+            ['name'=>'3. Liga','slug'=>'3-liga','country'=>'Germania','code'=>'3L','accent'=>'#f97316'],
             ['name'=>'Ligue 1','slug'=>'ligue-1','country'=>'Franța','code'=>'L1','accent'=>'#38bdf8'],
             ['name'=>'UEFA Champions League','slug'=>'champions-league','country'=>'Europa','code'=>'UCL','accent'=>'#a78bfa'],
             ['name'=>'SuperLiga România','slug'=>'superliga-romania','country'=>'România','code'=>'SLR','accent'=>'#fbbf24'],

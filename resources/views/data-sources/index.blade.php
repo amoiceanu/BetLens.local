@@ -2,6 +2,44 @@
 <div class="page-head"><div><p class="eyebrow">Trasabilitate și stare</p><h1>Sursa datelor</h1><p>Sursele sunt grupate pe cele șase niveluri L1–L6. O sursă poate contribui la mai multe niveluri.</p></div><div class="source-counts"><span><b>{{ $sources->where('status','healthy')->count() }}</b> disponibile</span><span><b>{{ $sources->count() }}</b> total unic</span></div></div>
 <div class="source-note"><i data-lucide="info" size="16"></i><span>„Verifică acum” testează conexiunea și importă în MySQL datele eligibile, fără duplicate. Fluxurile de cote Superbet nu pot citi biletele din contul personal.</span></div>
 @if($unassignedSources->isNotEmpty())<p class="source-unassigned">Fără nivel atribuit: {{ $unassignedSources->pluck('name')->join(', ') }}. Configurează aceste surse în Data Mindmap.</p>@endif
+<section class="master-import-widget" data-master-import
+    data-start-url="{{ route('data-sources.master-import.start') }}"
+    data-progress-url="{{ $masterImport ? route('data-sources.master-import.progress', $masterImport) : '' }}"
+    data-master-status="{{ $masterImport?->status ?? '' }}"
+    data-started-at="{{ ($masterImport?->started_at ?? $masterImport?->created_at)?->toIso8601String() ?? '' }}"
+    data-recover-url="{{ $masterImport ? route('data-sources.master-import.recover', $masterImport) : '' }}"
+    data-cancel-url="{{ $masterImport ? route('data-sources.master-import.cancel', $masterImport) : '' }}"
+    data-csrf="{{ csrf_token() }}">
+    <header class="master-import-header">
+        <div><p class="eyebrow">Import secvențial · L1–L6</p><h2>Master import</h2><p>Rulează automat sursele importabile, de la datele de bază la modelul predictiv. Fiecare sursă este pornită după încheierea celei precedente.</p></div>
+        <div class="master-import-actions">
+            <button type="button" class="btn" data-master-start><i data-lucide="layers-3" size="16"></i>Master import</button>
+            <button type="button" class="btn secondary master-import-cancel" data-master-cancel @if(!$masterImport || !in_array($masterImport->status, ['queued','running'], true)) hidden @endif><i data-lucide="square" size="15"></i>Oprește</button>
+            @if($masterImport && in_array($masterImport->status, ['partial','failed'], true) && collect($masterImport->items ?? [])->contains(fn($item) => in_array($item['status'] ?? '', ['partial','failed'], true)))
+                <button type="button" class="btn secondary" data-master-resume-url="{{ route('data-sources.master-import.resume', $masterImport) }}">Reia sursele eșuate</button>
+            @endif
+        </div>
+    </header>
+    <div class="master-import-state" data-master-state role="status">
+        <div class="master-import-state-line"><strong data-master-status-label>{{ $masterImport ? ucfirst($masterImport->status) : 'Nu a fost pornit încă' }}</strong><span data-master-summary>{{ $masterImport ? 'Se încarcă progresul salvat…' : 'Sursele neconfigurate și cele fără adaptor automat vor fi omise și explicate mai jos.' }}</span></div>
+        <div class="master-import-live" aria-live="polite">
+            <div><small>Pasul curent</small><strong data-master-current-step>În așteptare</strong><span data-master-current-detail>Va apărea aici sursa și operația în curs.</span></div>
+            <div><small>Timp de la pornire</small><strong data-master-elapsed>00:00</strong><span data-master-last-update>Progresul se salvează automat.</span></div>
+            <button type="button" class="btn secondary" data-master-recover hidden>Reia coordonarea</button>
+        </div>
+        <div class="master-import-track" data-master-track><span data-master-fill></span></div>
+        <ol class="master-import-items" data-master-items aria-live="polite">
+            @if($masterImport)
+                @foreach($masterImport->items ?? [] as $item)
+                    <li><span class="master-item-level">{{ isset($item['level']) ? 'L'.$item['level'] : '—' }}</span><span class="master-item-name">{{ $item['name'] }}</span><span class="master-item-status">{{ $item['status'] }}</span><small>{{ $item['message'] ?? '' }}</small></li>
+                @endforeach
+            @else
+                <li class="master-import-placeholder">Progresul și istoricul surselor vor apărea aici și se păstrează după reîncărcarea paginii.</li>
+            @endif
+        </ol>
+        <p class="master-import-worker-note">Importurile rulează în coada Laravel și continuă dacă părăsești pagina. Este necesar workerul configurat pentru coada „default” (și coada DigitalOcean pentru API-Football).</p>
+    </div>
+</section>
 <div class="source-level-tabs" role="tablist" aria-label="Nivelul surselor de date">
 @foreach($levelSections as $section)
 <button type="button" id="source-tab-{{ $section['number'] }}" role="tab" aria-controls="source-panel-{{ $section['number'] }}" aria-selected="{{ $section['number'] === 1 ? 'true' : 'false' }}" tabindex="{{ $section['number'] === 1 ? '0' : '-1' }}" data-source-tab="{{ $section['number'] }}">L{{ $section['number'] }}<small>{{ $section['sources']->count() }}</small></button>
@@ -9,13 +47,14 @@
 </div>
 @foreach($levelSections as $section)
 <section class="source-level-section" id="source-panel-{{ $section['number'] }}" role="tabpanel" aria-labelledby="source-tab-{{ $section['number'] }}" tabindex="0" @if($section['number'] !== 1) hidden @endif>
-<header class="source-level-heading"><span class="source-level-icon"><i data-lucide="{{ $section['icon'] }}" size="20" aria-hidden="true"></i></span><div><h2 id="source-level-{{ $section['number'] }}">L{{ $section['number'] }} – {{ $section['name'] }}</h2><p>{{ $section['description'] }}</p></div><span class="source-level-count">{{ $section['sources']->count() }} {{ $section['sources']->count() === 1 ? 'sursă' : 'surse' }}</span></header>
+<header class="source-level-heading"><span class="source-level-icon"><i data-lucide="{{ $section['icon'] }}" size="20" aria-hidden="true"></i></span><div><h2 id="source-level-{{ $section['number'] }}">L{{ $section['number'] }} – {{ $section['name'] }}</h2><p>{{ $section['description'] }}</p><p class="source-level-details">{{ $section['details'] }}</p></div><span class="source-level-count">{{ $section['sources']->count() }} {{ $section['sources']->count() === 1 ? 'sursă' : 'surse' }}</span></header>
 <div class="card source-table-card">
-@if($section['sources']->isNotEmpty())<div class="source-table-wrap"><table class="source-table"><thead><tr><th>Sursă</th><th>Date furnizate</th><th>Format</th><th>Stare</th><th>Ultima verificare</th><th>Date importate</th><th>Rezultat</th><th class="source-action-head">Acțiune</th></tr></thead><tbody>
+@if($section['sources']->isNotEmpty())<div class="source-table-wrap"><table class="source-table"><thead><tr><th>Sursă</th><th>Date furnizate</th><th>Rol în L{{ $section['number'] }}</th><th>Format</th><th>Stare</th><th>Ultima verificare</th><th>Date importate</th><th>Rezultat</th><th class="source-action-head">Acțiune</th></tr></thead><tbody>
 @foreach($section['sources'] as $source)
 <tr>
     <td data-label="Sursă"><div class="source-name"><span class="source-mini-icon"><i data-lucide="{{ $source->category==='Cote și piețe'?'badge-dollar-sign':'database' }}" size="16"></i></span><div><b>{{ $source->name }}</b>@if($source->website_url)<a href="{{ $source->website_url }}" target="_blank" rel="noreferrer">Deschide site-ul <i data-lucide="external-link" size="11"></i></a>@endif</div></div></td>
     <td data-label="Date furnizate"><span class="source-data-type">{{ $source->category }}</span>@if($source->credential_env)<small class="source-key"><i data-lucide="key-round" size="11"></i>{{ $source->credential_env }}</small>@endif</td>
+    <td data-label="Rol în L{{ $section['number'] }}" class="source-level-role">{{ \App\Services\Mindmap\SourceCatalog::roleFor($source->slug, $section['number']) }}</td>
     <td data-label="Format"><span class="source-format">{{ $source->data_format }}</span></td>
     <td data-label="Stare">@if($source->import_method==='unsupported')<span class="source-status unsupported"><span></span>Adaptor indisponibil</span>@elseif($source->import_method==='internal_model')<span class="source-status healthy"><span></span>Model intern</span>@elseif(!$source->is_verification_configured)<span class="source-status not_configured"><span></span>Neconfigurată</span>@elseif($source->status==='not_configured')<span class="source-status never_checked"><span></span>Neverificată</span>@else<span class="source-status {{ $source->status }}"><span></span>{{ $source->status_label }}</span>@endif</td>
     <td data-label="Ultima verificare" class="source-last-check {{ !$source->last_checked_at || !$source->last_checked_at->isToday() ? 'is-stale' : '' }}">@if($source->last_checked_at)<b class="source-time">{{ $source->last_checked_at->format('d.m.Y · H:i') }}</b><small>{{ $source->last_checked_at->diffForHumans() }} · {{ $source->last_duration_ms }} ms</small>@else<b class="source-time">Niciodată</b><small>{{ $source->import_method==='unsupported' ? 'Adaptor neimplementat' : ($source->import_method==='internal_model' ? 'Procesor intern' : ($source->is_verification_configured ? 'Rulează prima verificare' : 'Necesită configurare')) }}</small>@endif</td>

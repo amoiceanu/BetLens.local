@@ -16,7 +16,7 @@ class ImportUpcomingMatchesJob implements ShouldQueue
     public int $tries = 1;
     public int $timeout = 540;
 
-    public function __construct(public int $runId, public int $days) {}
+    public function __construct(public int $runId, public int $days, public string $mode = 'upcoming') {}
 
     public function handle(OpenLigaDataImporter $importer, ImportAuditService $audit): void
     {
@@ -25,7 +25,7 @@ class ImportUpcomingMatchesJob implements ShouldQueue
         $run->update(['status' => 'running', 'started_at' => now(), 'message' => 'Se pregătește conexiunea cu OpenLigaDB.']);
         $audit->syncRun($run);
 
-        $result = $importer->importUpcomingMatches($this->days, function (string $stage, string $league, array $metrics) use ($run, $audit) {
+        $progress = function (string $stage, string $league, array $metrics) use ($run, $audit) {
             $run->update([
                 'records_fetched' => $metrics['read'],
                 'records_new' => $metrics['matches_new'],
@@ -43,14 +43,17 @@ class ImportUpcomingMatchesJob implements ShouldQueue
                 },
             ]);
             $audit->syncRun($run);
-        });
+        };
+        $result = $this->mode === 'past_results'
+            ? $importer->refreshPastMatchResults($progress)
+            : $importer->importUpcomingMatches($this->days, $progress);
 
         $run->update([
             'status' => $result['errors'] ? 'partial' : 'completed',
             'records_fetched' => $result['read'], 'records_new' => $result['matches_new'],
             'records_updated' => $result['matches_updated'], 'records_skipped' => $result['matches_unchanged'],
             'records_errors' => count($result['errors']),
-            'metadata' => ['days' => $this->days, 'stage' => 'finished', 'league' => null,
+            'metadata' => ['days' => $this->days, 'mode' => $this->mode, 'stage' => 'finished', 'league' => null,
                 'leagues_done' => $result['leagues'], 'predictions_new' => $result['predictions_new'],
                 'predictions_unchanged' => $result['predictions_unchanged'], 'errors' => $result['errors']],
             'message' => $result['errors'] ? 'Import încheiat cu avertismente.' : 'Import încheiat cu succes.',

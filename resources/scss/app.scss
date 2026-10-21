@@ -5,6 +5,7 @@
 @use 'betlens';
 @use 'admin-shell';
 @use 'sources';
+@use 'master-import-ui';
 @use 'modal';
 @use 'match-analysis';
 @use 'operators';
@@ -12,6 +13,8 @@
 @use 'aliases';
 @use 'imported-ticket';
 @use 'upcoming';
+@use 'ticket-archive';
+@use 'coverage-matrix';
 
 .real-data-pill{color:var(--green);border-color:#3ee68b44;background:#3ee68b0d}
 .admin-database-status{padding:5px 9px;border:1px solid #cbd7e2;border-radius:999px;color:#53677e;white-space:nowrap}

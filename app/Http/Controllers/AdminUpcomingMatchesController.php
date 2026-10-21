@@ -18,17 +18,27 @@ class AdminUpcomingMatchesController extends Controller
 {
     public function index(Request $request): View
     {
+        return $this->listing($request, false);
+    }
+
+    public function past(Request $request): View
+    {
+        return $this->listing($request, true);
+    }
+
+    private function listing(Request $request, bool $past): View
+    {
         $filters = $request->validate([
             'league' => ['nullable', 'integer', 'exists:leagues,id'],
             'team' => ['nullable', 'string', 'max:100'],
             'from' => ['nullable', 'date_format:Y-m-d'],
             'to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:from'],
         ]);
-        $from = $filters['from'] ?? now()->toDateString();
-        $to = $filters['to'] ?? now()->addDays(45)->toDateString();
+        $from = $filters['from'] ?? ($past ? now()->subDays(45)->toDateString() : now()->toDateString());
+        $to = $filters['to'] ?? ($past ? now()->toDateString() : now()->addDays(45)->toDateString());
         $matches = FootballMatch::with(['league', 'homeTeam', 'awayTeam', 'actualResult', 'latestBetlensPrediction'])
             ->whereBetween('kickoff_at', [$from.' 00:00:00', $to.' 23:59:59'])
-            ->when(! isset($filters['from']), fn ($query) => $query->where('kickoff_at', '>', now()))
+            ->when($past, fn ($query) => $query->where('kickoff_at', '<=', now()), fn ($query) => $query->where('kickoff_at', '>', now()))
             ->when($filters['league'] ?? null, fn ($query, $league) => $query->where('league_id', $league))
             ->when($filters['team'] ?? null, fn ($query, $team) => $query->where(fn ($both) => $both
                 ->whereHas('homeTeam', fn ($q) => $q->where('name', 'like', '%'.$team.'%'))
@@ -41,6 +51,7 @@ class AdminUpcomingMatchesController extends Controller
             'filters' => $filters,
             'from' => $from,
             'to' => $to,
+            'isPast' => $past,
         ]);
     }
 
@@ -70,9 +81,33 @@ class AdminUpcomingMatchesController extends Controller
             : redirect()->route('admin.upcoming-matches')->with('success', 'Importul a fost adăugat în coadă.');
     }
 
+    public function refreshPast(Request $request): JsonResponse|RedirectResponse
+    {
+        $source = DataSource::where('slug', 'openligadb')->firstOrFail();
+        $run = DB::transaction(function () use ($source) {
+            DataSource::whereKey($source->id)->lockForUpdate()->firstOrFail();
+            $active = ImportRun::where('data_source_id', $source->id)->where('import_method', 'past_match_results')
+                ->whereIn('status', ['queued', 'running'])->first();
+            if ($active) return $active;
+            $run = ImportRun::create([
+                'data_source_id' => $source->id, 'status' => 'queued',
+                'execution_source' => config('betlens.import_execution_source', 'Laravel-local'),
+                'import_method' => 'past_match_results', 'message' => 'Actualizarea rezultatelor așteaptă în coadă.',
+                'metadata' => ['stage' => 'queued', 'league' => null, 'predictions_new' => 0],
+            ]);
+            app(ImportAuditService::class)->syncRun($run);
+            ImportUpcomingMatchesJob::dispatch($run->id, 0, 'past_results')->afterCommit();
+            return $run;
+        });
+
+        return $request->expectsJson()
+            ? response()->json(['run_id' => $run->id, 'progress_url' => route('admin.upcoming-matches.progress', $run)], 202)
+            : redirect()->route('admin.past-matches')->with('success', 'Actualizarea rezultatelor a fost adăugată în coadă.');
+    }
+
     public function progress(ImportRun $run): JsonResponse
     {
-        abort_unless($run->import_method === 'upcoming_matches', 404);
+        abort_unless(in_array($run->import_method, ['upcoming_matches', 'past_match_results'], true), 404);
         return response()->json($run->only(['id', 'status', 'records_fetched', 'records_new', 'records_updated',
             'records_skipped', 'records_errors', 'metadata', 'message', 'started_at', 'finished_at']));
     }

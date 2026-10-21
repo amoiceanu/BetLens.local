@@ -49,7 +49,7 @@ class UserAuthController extends Controller
     {
         $data = $request->validate([
             'name' => 'required|string|max:100',
-            'email' => 'required|email|max:255|unique:users,email',
+            'email' => ['required', 'email', 'max:255', \Illuminate\Validation\Rule::unique((config('database.default') === 'mysql' && config('database.connections.mysql.prefix') === 'st_' ? 'mysql_auth.' : '').'users', 'email')],
             'password' => ['required', 'confirmed', Password::min(12)],
         ]);
         $user = User::create([

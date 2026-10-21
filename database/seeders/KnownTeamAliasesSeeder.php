@@ -75,9 +75,10 @@ class KnownTeamAliasesSeeder extends Seeder
             foreach ($known[mb_strtolower(trim($team->name))] ?? [] as $alias) {
                 $normalized = $matcher->normalize($alias);
                 if ($normalized === $matcher->normalize($team->name)) continue;
-                if (TeamAlias::where('league_id', $team->league_id)->where('provider', 'all')->where('normalized_alias', $normalized)->exists()) continue;
+                $existing = TeamAlias::where('normalized_alias', $normalized)->first();
+                if ($existing) continue;
 
-                $conflicts = Team::where('league_id', $team->league_id)->whereKeyNot($team->id)->get()
+                $conflicts = Team::whereKeyNot($team->id)->get()
                     ->contains(fn (Team $other) => $matcher->normalize($other->name) === $normalized
                         || $matcher->normalize($other->short_name) === $normalized);
                 if ($conflicts) continue;
@@ -88,10 +89,13 @@ class KnownTeamAliasesSeeder extends Seeder
                     'provider' => 'all',
                     'alias' => $alias,
                     'normalized_alias' => $normalized,
+                    'status' => 'active',
                 ]);
                 $created++;
             }
         }
+
+        app(\App\Services\TeamAliasResolver::class)->forgetCache();
 
         $this->command?->info("Aliasuri noi: {$created}.");
     }
