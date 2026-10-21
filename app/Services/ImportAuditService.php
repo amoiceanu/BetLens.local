@@ -57,7 +57,11 @@ class ImportAuditService
             'provider' => $run->source?->slug ?? 'sursa-ștearsă',
             'import_type' => $run->import_method,
             'execution_source' => $run->execution_source,
-            'job_name' => $run->import_method === 'digitalocean_function' ? 'ImportApiFootballFromDigitalOcean' : 'RunMindmapImport',
+            'job_name' => match ($run->import_method) {
+                'digitalocean_function' => 'ImportApiFootballFromDigitalOcean',
+                'api_football_local' => 'ImportApiFootballLocally',
+                default => 'RunMindmapImport',
+            },
             'status' => $run->status,
             'overall_status' => match ($run->status) {
                 'completed' => 'success', 'failed' => 'failed', 'partial' => 'warning', default => $run->status,

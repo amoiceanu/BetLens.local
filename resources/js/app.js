@@ -2,8 +2,10 @@ import './bootstrap';
 import './mindmap';
 import './import-center';
 import './source-progress';
+import './master-import';
 import './source-tabs';
 import './upcoming-import';
+import './team-aliases';
 
 for (const form of document.querySelectorAll('[data-coverage-filter]')) {
     form.addEventListener('submit', () => { const status = form.querySelector('[data-loading]'); if (status) status.hidden = false; });

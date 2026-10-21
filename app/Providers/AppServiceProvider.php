@@ -13,6 +13,15 @@ class AppServiceProvider extends ServiceProvider
     }
     public function boot(): void
     {
+        \Illuminate\Support\Facades\View::composer('admin.partials.navigation', function ($view): void {
+            $view->with('failedJobCount', app(\App\Http\Controllers\AdminFailedJobsController::class)->count());
+        });
+        $this->app->extend('migration.repository', function ($repository, $app) {
+            $migrations = $app['config']['database.migrations'];
+            $table = is_array($migrations) ? ($migrations['table'] ?? null) : $migrations;
+
+            return new \App\Database\UnprefixedMigrationRepository($app['db'], $table);
+        });
         \App\Models\ExternalIdMapping::saved(fn($mapping)=>app(\App\Services\Coverage\ObservationProjector::class)->remap($mapping));
         \App\Models\MatchWeatherSnapshot::saved(function($snapshot){
             $projector=app(\App\Services\Coverage\ObservationProjector::class);

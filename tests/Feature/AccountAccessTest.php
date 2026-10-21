@@ -100,6 +100,23 @@ class AccountAccessTest extends TestCase
             ->assertSee('cont@example.test');
     }
 
+    public function test_ticket_archive_has_accessible_sort_headers_and_keeps_filters_in_sort_links(): void
+    {
+        $user = User::factory()->create(['is_admin' => false]);
+        $response = $this->actingAs($user)->get(route('tickets', [
+            'source' => 'import', 'status' => 'lost', 'from' => '2026-10-01', 'to' => '2026-10-31',
+            'sort' => 'created_at', 'direction' => 'asc',
+        ]));
+
+        $response->assertOk()
+            ->assertSee('aria-label="Istoricul biletelor"', false)
+            ->assertSee('aria-sort="ascending"', false)
+            ->assertSee('aria-label="Sortează după Probabilitate"', false)
+            ->assertSee('Probabilitate')
+            ->assertSee('Acțiuni')
+            ->assertSee('source=import&amp;status=lost&amp;from=2026-10-01&amp;to=2026-10-31&amp;sort=reference', false);
+    }
+
     public function test_admin_header_keeps_account_actions_on_right_and_real_sources_below_menu(): void
     {
         $admin = User::factory()->create(['is_admin' => true, 'username' => 'header-admin']);

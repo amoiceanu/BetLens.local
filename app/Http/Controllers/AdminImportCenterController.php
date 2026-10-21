@@ -8,7 +8,6 @@ use App\Models\ImportDocument;
 use App\Models\ImportRun;
 use App\Models\SourceRecord;
 use App\Services\ImportAuditService;
-use App\Services\Imports\DigitalOceanFunctionService;
 use App\Services\Mindmap\ImportManager;
 use App\Services\Mindmap\MindmapData;
 use App\Services\Mindmap\SourceCatalog;
@@ -31,7 +30,7 @@ class AdminImportCenterController extends Controller
             ->when($selection['run_status'] ?? null, fn ($query, $status) => $query->where('status', $status))
             ->latest()->paginate(12)->withQueryString();
         $apiFootballRuns = ImportRun::whereHas('source', fn ($query) => $query->where('slug', 'api-football'))
-            ->where('import_method', 'digitalocean_function')->latest()->limit(10)->get();
+            ->whereIn('import_method', ['api_football_local', 'digitalocean_function'])->latest()->limit(10)->get();
         return view('admin.mindmap.control-center', $snapshot + ['runs' => $runs,
             'historyRuns' => $runs->getCollection()->concat($apiFootballRuns)->unique('id')->sortByDesc('id')->values(),
             'runStatus' => $selection['run_status'] ?? null]);
@@ -157,10 +156,14 @@ class AdminImportCenterController extends Controller
     {
         if ($source->slug === 'api-football') {
             try {
-                $items = app(DigitalOceanFunctionService::class)->fetch('api_football_l1');
-                return response()->json(['status' => 'success', 'message' => 'Funcția DigitalOcean a răspuns: '.count($items).' competiții primite. Nu s-au scris date în MySQL.']);
+                $key = $source->credentialValue();
+                if (blank($key)) throw new \RuntimeException('API_FOOTBALL_KEY lipsește.');
+                $baseUrl = rtrim((string) config('services.api_football.base_url', 'https://v3.football.api-sports.io'), '/');
+                $response = Http::acceptJson()->withHeader('x-apisports-key', $key)->timeout(20)->get($baseUrl.'/leagues', ['country' => 'Romania']);
+                if (! $response->successful() || ! is_array($response->json('response'))) throw new \RuntimeException('API-Football nu a returnat competițiile așteptate.');
+                return response()->json(['status' => 'success', 'message' => 'Conexiunea locală la API-Football a reușit: '.count($response->json('response')).' competiții primite. Nu s-au scris date în MySQL.']);
             } catch (\Throwable) {
-                return response()->json(['status' => 'failed', 'message' => 'Conexiunea cu funcția DigitalOcean nu a reușit. Verifică URL-ul, tokenul și logurile serverului.'], 422);
+                return response()->json(['status' => 'failed', 'message' => 'Conexiunea locală la API-Football nu a reușit. Verifică API_FOOTBALL_KEY și logurile serverului.'], 422);
             }
         }
         if ($source->import_method !== 'existing' || ! isset(SourceCatalog::ENDPOINTS[$source->slug]) || $source->verification_url !== SourceCatalog::ENDPOINTS[$source->slug] || ! $source->is_configured) {

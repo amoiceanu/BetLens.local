@@ -8,10 +8,34 @@ use Illuminate\Support\Facades\DB;
 
 class SourcePayloadStoreService
 {
+    private const WRITE_BATCH_SIZE = 200;
+
     public function store(DataSource $source,string $type,array $records): array
     {
         $new=$updated=$unchanged=0;
-        DB::transaction(function()use($source,$type,$records,&$new,&$updated,&$unchanged){foreach($records as $index=>$payload){if(!is_array($payload))$payload=['value'=>$payload];$encoded=json_encode($payload,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);$checksum=hash('sha256',$encoded);$externalId=(string)($payload['external_id']??$payload['id']??hash('sha256',$encoded).':'.$index);$key=substr($type.':'.$externalId,0,191);$record=SourceRecord::where(['data_source_id'=>$source->id,'external_key'=>$key])->first();if(!$record){SourceRecord::create(['data_source_id'=>$source->id,'external_key'=>$key,'record_type'=>$type,'payload'=>$payload,'checksum'=>$checksum,'first_seen_at'=>now(),'last_seen_at'=>now()]);$new++;}elseif($record->checksum!==$checksum){$record->update(['payload'=>$payload,'checksum'=>$checksum,'last_seen_at'=>now()]);$updated++;}else{$record->update(['last_seen_at'=>now()]);$unchanged++;}}});
+        DB::transaction(function()use($source,$type,$records,&$new,&$updated,&$unchanged){
+            foreach(array_chunk($records,self::WRITE_BATCH_SIZE,true) as $batch){
+                $prepared=[];$keys=[];$now=now();
+                foreach($batch as $index=>$payload){
+                    if(!is_array($payload))$payload=['value'=>$payload];
+                    $encoded=json_encode($payload,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);
+                    $checksum=hash('sha256',$encoded);
+                    $externalId=(string)($payload['external_id']??$payload['id']??hash('sha256',$encoded).':'.$index);
+                    $key=substr($type.':'.$externalId,0,191);$keys[]=$key;
+                    $prepared[$key]=['data_source_id'=>$source->id,'external_key'=>$key,'record_type'=>$type,'payload'=>json_encode($payload,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'checksum'=>$checksum,'first_seen_at'=>$now,'last_seen_at'=>$now,'created_at'=>$now,'updated_at'=>$now];
+                }
+                if(!$prepared)continue;
+                $existing=DB::table('source_records')->where('data_source_id',$source->id)->whereIn('external_key',$keys)->get(['external_key','checksum']);
+                $checksums=$existing->keyBy('external_key');
+                foreach($prepared as $key=>$row){
+                    $old=$checksums->get($key);
+                    if(!$old)$new++;
+                    elseif($old->checksum!==$row['checksum'])$updated++;
+                    else $unchanged++;
+                }
+                DB::table('source_records')->upsert(array_values($prepared),['data_source_id','external_key'],['record_type','payload','checksum','last_seen_at','updated_at']);
+            }
+        });
         app(\App\Services\Coverage\ObservationProjector::class)->stored($source,$type,$records);
         app(\App\Services\Coverage\ObservationProjector::class)->flush();
         return ['database'=>$source->records()->count(),'new'=>$new,'updated'=>$updated,'unchanged'=>$unchanged,'errors'=>0];

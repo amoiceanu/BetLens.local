@@ -29,6 +29,24 @@ class SourceCoverageTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_coverage_query_applies_prefixed_table_aliases_to_raw_expressions(): void
+    {
+        $connection = DB::connection();
+        $originalPrefix = $connection->getTablePrefix();
+
+        try {
+            $connection->setTablePrefix('st_');
+            $sql = app(CoverageMatrix::class)->query([])->toSql();
+
+            $this->assertStringContainsString('st_unknown_league.id as league_id', $sql);
+            $this->assertStringContainsString('st_d.source_a_id as source_id', $sql);
+            $this->assertStringContainsString('st_c.season_id = st_se.id', $sql);
+            $this->assertStringContainsString('st_sa.latest_id', $sql);
+        } finally {
+            $connection->setTablePrefix($originalPrefix);
+        }
+    }
+
     private function admin(): static
     {
         $this->withSession(['admin_user_id' => User::factory()->create(['is_admin' => true])->id]);

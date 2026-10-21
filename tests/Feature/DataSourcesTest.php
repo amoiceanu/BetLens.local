@@ -83,7 +83,7 @@ class DataSourcesTest extends TestCase
             ->assertSee('Open-Meteo API')
             ->assertSee('<th>Format</th>',false)
             ->assertSee('data-label="Format"',false)
-            ->assertSeeInOrder(['L1 – Open APIs', 'L2 – Statistici avansate', 'L3 – Echipe și jucători', 'L4 – Știri și info externe', 'L5 – Contextul meciului', 'L6 – Inteligență predictivă'])
+            ->assertSeeInOrder(['L1 – Date de bază', 'L2 – Statistici și cote', 'L3 – Loturi și disponibilitate', 'L4 – Știri și informații externe', 'L5 – Contextul meciului', 'L6 – Inteligență predictivă'])
             ->assertSee('role="tablist"', false)
             ->assertSee('id="source-tab-1" role="tab"', false)
             ->assertSee('id="source-tab-6" role="tab"', false)
@@ -96,6 +96,26 @@ class DataSourcesTest extends TestCase
         $this->assertSame('JSON',\App\Models\DataSource::where('slug','api-football')->firstOrFail()->data_format);
         $this->assertSame('CSV',\App\Models\DataSource::where('slug','football-data-uk')->firstOrFail()->data_format);
         $this->assertSame('Calcul intern',\App\Models\DataSource::where('slug','betlens-model')->firstOrFail()->data_format);
+    }
+
+    public function test_source_tabs_only_repeat_sources_when_they_have_a_distinct_data_role(): void
+    {
+        $this->get('/surse-date')->assertOk()
+            ->assertViewHas('levelSections', function ($sections) {
+                $l1 = $sections->get(1)['sources']->pluck('slug')->all();
+                $l2 = $sections->get(2)['sources']->pluck('slug')->all();
+                $l3 = $sections->get(3)['sources']->pluck('slug')->all();
+
+                return in_array('api-football', $l1, true)
+                    && ! in_array('api-football', $l3, true)
+                    && in_array('football-data-uk', $l1, true)
+                    && in_array('football-data-uk', $l2, true)
+                    && ! in_array('statsbomb-open-data', $l2, true)
+                    && in_array('sportmonks', $l2, true)
+                    && in_array('sportmonks', $l3, true);
+            })
+            ->assertSee('Rol în L1')
+            ->assertSee('Statistici istorice din CSV');
     }
     public function test_configured_sources_are_alphabetical_before_unconfigured_sources(): void
     {
@@ -196,7 +216,7 @@ class DataSourcesTest extends TestCase
         $this->travel(1)->minutes();
         $this->get('/surse-date')->assertSee(route('data-sources.verify',$source),false);
         $this->post(route('data-sources.verify',$source))->assertRedirect();
-        $this->assertDatabaseCount('import_audits',2);
+        $this->assertDatabaseCount('import_audits', 2);
     }
     public function test_the_table_shows_the_number_of_imported_records_for_each_source(): void
     {
@@ -208,6 +228,24 @@ class DataSourcesTest extends TestCase
             ->assertSee('Date importate')
             ->assertSee('1')
             ->assertSee('înregistrări în MySQL');
+    }
+    public function test_large_provider_payloads_are_upserted_in_batches_and_remain_idempotent(): void
+    {
+        $source=\App\Models\DataSource::where('slug','statsbomb-open-data')->firstOrFail();
+        $records=[];
+        for($id=1;$id<=301;$id++)$records[]=['competition_id'=>$id,'season_id'=>2026,'competition_name'=>'League '.$id];
+        Http::fake(['raw.githubusercontent.com/*'=>Http::response($records,200)]);
+
+        $this->post("/surse-date/{$source->id}/verifica")
+            ->assertRedirect()
+            ->assertSessionHas('verification_result',fn($result)=>$result['detected']===301&&$result['new']===301&&$result['database']===301&&$result['status']==='healthy');
+        $this->assertDatabaseCount('source_records',301);
+
+        $this->travel(5)->minutes();
+        $this->post("/surse-date/{$source->id}/verifica")
+            ->assertRedirect()
+            ->assertSessionHas('verification_result',fn($result)=>$result['detected']===301&&$result['new']===0&&$result['updated']===0&&$result['unchanged']===301&&$result['database']===301&&$result['status']==='healthy');
+        $this->assertDatabaseCount('source_records',301);
     }
     public function test_an_outdated_last_check_is_highlighted(): void
     {
@@ -231,7 +269,7 @@ class DataSourcesTest extends TestCase
         $this->post("/surse-date/{$source->id}/verifica")->assertSessionHas('verification_result',fn($result)=>$result['new']===0 && $result['unchanged']===1 && $result['database']===1);
         $this->assertDatabaseCount('source_records',1);
         $this->assertDatabaseHas('import_audits',['provider'=>'openligadb','import_type'=>'source_sync','records_new'=>0,'records_updated'=>0,'records_deleted'=>0]);
-        $this->assertDatabaseCount('import_audits',2);
+        $this->assertSame(2, \DB::table('import_audits')->where('import_type', 'source_sync')->count());
     }
     public function test_import_audit_records_updated_payloads(): void
     {

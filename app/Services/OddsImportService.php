@@ -14,6 +14,7 @@ use Illuminate\Support\Str;
 
 class OddsImportService
 {
+    private const WRITE_BATCH_SIZE = 300;
     private const SPORTS = [
         'premier-league' => 'soccer_epl',
         'la-liga' => 'soccer_spain_la_liga',
@@ -48,7 +49,7 @@ class OddsImportService
                 $events = $response->json();
                 if (! is_array($events)) continue;
                 $metrics['events'] += count($events);
-                foreach ($events as $event) $this->importEvent($league, $sportKey, $event, $metrics);
+                $this->importEventsBatch($league,$sportKey,$events,$metrics);
                 $analysis = $this->analysis->generateForLeague($league);
                 $metrics['recommendations'] += $analysis['created'] + $analysis['updated'];
                 $metrics['eligible'] += $analysis['eligible'];
@@ -59,17 +60,14 @@ class OddsImportService
         return $metrics;
     }
 
-    private function importEvent(League $league, string $sportKey, array $event, array &$metrics): void
+    private function importEventsBatch(League $league, string $sportKey, array $events, array &$metrics): void
     {
-        if (empty($event['id']) || empty($event['commence_time']) || empty($event['home_team']) || empty($event['away_team'])) return;
-        $match = $this->resolveMatch($league, $event);
-        if (! $match) { $metrics['unmatched']++; return; }
-        $metrics['matched']++;
-        ProviderMatchMapping::updateOrCreate(
-            ['provider' => 'the-odds-api', 'external_id' => (string) $event['id']],
-            ['match_id' => $match->id, 'sport_key' => $sportKey, 'home_name' => $event['home_team'], 'away_name' => $event['away_team'], 'kickoff_at' => Carbon::parse($event['commence_time'])]
-        );
-
+        $mappingRows=[];$oddRows=[];$snapshotRows=[];$now=now();$oddIdentityKeys=[];
+        foreach($events as $event){
+            if(empty($event['id'])||empty($event['commence_time'])||empty($event['home_team'])||empty($event['away_team']))continue;
+            $match=$this->resolveMatch($league,$event);if(!$match){$metrics['unmatched']++;continue;}$metrics['matched']++;
+            $mappingRows[]=['provider'=>'the-odds-api','external_id'=>(string)$event['id'],'match_id'=>$match->id,'sport_key'=>$sportKey,'home_name'=>$event['home_team'],'away_name'=>$event['away_team'],'kickoff_at'=>Carbon::parse($event['commence_time'])->format('Y-m-d H:i:s'),'created_at'=>$now,'updated_at'=>$now];
+            $pending=[];
         foreach ($event['bookmakers'] ?? [] as $bookmaker) {
             foreach ($bookmaker['markets'] ?? [] as $market) {
                 foreach ($market['outcomes'] ?? [] as $outcome) {
@@ -80,25 +78,27 @@ class OddsImportService
                     if (! $marketModel) continue;
                     $capturedAt = Carbon::parse($market['last_update'] ?? $bookmaker['last_update'] ?? now());
                     $identity = ['match_id' => $match->id, 'market_id' => $marketModel->id, 'selection' => $selection, 'provider' => (string) ($bookmaker['key'] ?? 'the-odds-api')];
-                    $odd = Odd::where($identity)->first();
                     $price = round((float) $outcome['price'], 2);
-                    if (! $odd) {
-                        $odd = Odd::create($identity + ['price' => $price, 'captured_at' => $capturedAt]);
-                        $metrics['odds_new']++;
-                    } elseif ((float) $odd->price !== $price) {
-                        $odd->update(['price' => $price, 'captured_at' => $capturedAt]);
-                        $metrics['odds_updated']++;
-                    } else {
-                        $odd->update(['captured_at' => $capturedAt]);
-                        $metrics['odds_unchanged']++;
-                    }
-                    $lastSnapshot = DB::table('odds_snapshots')->where('odds_id', $odd->id)->orderByDesc('captured_at')->first();
-                    if (! $lastSnapshot || (float) $lastSnapshot->price !== $price || (string) $lastSnapshot->captured_at !== $capturedAt->format('Y-m-d H:i:s')) {
-                        DB::table('odds_snapshots')->insert(['odds_id' => $odd->id, 'price' => $price, 'captured_at' => $capturedAt, 'created_at' => now(), 'updated_at' => now()]);
-                    }
+                    $key=implode('|',[$identity['match_id'],$identity['market_id'],$identity['selection'],$identity['provider']]);
+                    $pending[$key]=['identity'=>$identity,'price'=>$price,'captured_at'=>$capturedAt->format('Y-m-d H:i:s')];
                 }
             }
         }
+            foreach($pending as $key=>$row){$oddIdentityKeys[$key]=$row['identity'];$oddRows[$key]=['match_id'=>$row['identity']['match_id'],'market_id'=>$row['identity']['market_id'],'selection'=>$row['identity']['selection'],'provider'=>$row['identity']['provider'],'price'=>$row['price'],'captured_at'=>$row['captured_at'],'created_at'=>$now,'updated_at'=>$now];$snapshotRows[$key]=['price'=>$row['price'],'captured_at'=>$row['captured_at']];}
+        }
+        if($mappingRows)foreach(array_chunk($mappingRows,self::WRITE_BATCH_SIZE) as $chunk)DB::table('provider_match_mappings')->upsert($chunk,['provider','external_id'],['match_id','sport_key','home_name','away_name','kickoff_at','updated_at']);
+        if(!$oddRows)return;
+        $existing=DB::table('odds')->whereIn('match_id',array_unique(array_column($oddRows,'match_id')))->whereIn('market_id',array_unique(array_column($oddRows,'market_id')))->get(['id','match_id','market_id','selection','provider','price'])->keyBy(fn($row)=>implode('|',[$row->match_id,$row->market_id,$row->selection,$row->provider]));
+        foreach($oddRows as $key=>$row){$old=$existing->get($key);if(!$old)$metrics['odds_new']++;elseif((float)$old->price!==(float)$row['price'])$metrics['odds_updated']++;else $metrics['odds_unchanged']++;}
+        foreach(array_chunk(array_values($oddRows),self::WRITE_BATCH_SIZE) as $chunk)DB::table('odds')->upsert($chunk,['match_id','market_id','selection','provider'],['price','captured_at','updated_at']);
+        $ids=DB::table('odds')->whereIn('match_id',array_unique(array_column($oddRows,'match_id')))->whereIn('market_id',array_unique(array_column($oddRows,'market_id')))->get(['id','match_id','market_id','selection','provider'])->keyBy(fn($row)=>implode('|',[$row->match_id,$row->market_id,$row->selection,$row->provider]));
+        $snapshotIds=$ids->pluck('id')->all();$latestSnapshots=[];
+        foreach(array_chunk($snapshotIds,self::WRITE_BATCH_SIZE) as $idChunk){
+            $rows=DB::table('odds_snapshots')->whereIn('odds_id',$idChunk)->orderByDesc('captured_at')->get(['odds_id','price','captured_at']);
+            foreach($rows as $row)if(!isset($latestSnapshots[$row->odds_id]))$latestSnapshots[$row->odds_id]=$row;
+        }
+        $snapshots=[];foreach($oddRows as $key=>$row){$id=$ids->get($key)?->id;if(!$id)continue;$last=$latestSnapshots[$id]??null;if(!$last||(float)$last->price!==(float)$row['price']||(string)$last->captured_at!==$row['captured_at'])$snapshots[]=['odds_id'=>$id,'price'=>$row['price'],'captured_at'=>$row['captured_at'],'created_at'=>$now,'updated_at'=>$now];}
+        foreach(array_chunk($snapshots,self::WRITE_BATCH_SIZE) as $chunk)DB::table('odds_snapshots')->insert($chunk);
     }
 
     private function resolveMatch(League $league, array $event): ?FootballMatch

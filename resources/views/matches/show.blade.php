@@ -76,8 +76,24 @@
     </ul></section>
     <aside class="card decision-box"><p class="eyebrow">Pe scurt</p><div class="decision-line"><span>Selecție</span><b>{{ $bestRecommendation->selection }}</b></div><div class="decision-line"><span>Verdict</span><b class="positive">{{ $bestRecommendation->eligible?'Eligibilă pentru bilet':'Nu trece toate pragurile' }}</b></div><div class="notice"><i data-lucide="shield-alert" size="18"></i><span>Este o estimare statistică, nu o garanție. Verifică dacă oferta bookmakerului este încă disponibilă înainte de plasare.</span></div></aside>
 </div>
-@else
-<section class="card empty">Nu există încă o analiză disponibilă pentru acest meci.</section>
+@endif
+
+@if($match->latestBetlensPrediction)
+@php($snapshot=$match->latestBetlensPrediction)
+<section class="card match-prediction-card">
+    <div class="match-prediction-heading"><div><p class="eyebrow">Estimare statistică BetLens</p><h2>Probabilități rezultat (1/X/2)</h2></div><span class="match-prediction-version">{{ $snapshot->model_version ?: 'Model BetLens' }}</span></div>
+    <div class="match-prediction-outcomes">
+        @foreach([['1','Victorie '.$match->homeTeam->name,$snapshot->home_win_probability,$snapshot->home_win_odds],['X','Egal',$snapshot->draw_probability,$snapshot->draw_odds],['2','Victorie '.$match->awayTeam->name,$snapshot->away_win_probability,$snapshot->away_win_odds]] as [$code,$label,$probability,$fairOdds])
+        <div class="match-prediction-outcome"><span>{{ $code }} · {{ $label }}</span><b>{{ $probability!==null?number_format((float)$probability*100,1,',','.').'%' : '—' }}</b><div class="match-prediction-track"><i style="width: {{ $probability!==null?max(0,min(100,(float)$probability*100)):0 }}%"></i></div><small>{{ $fairOdds!==null?'Cotă echitabilă: '.number_format((float)$fairOdds,2,',','.').' · fără marja bookmakerului':'Cotă echitabilă indisponibilă' }}</small></div>
+        @endforeach
+    </div>
+    @if($snapshot->home_score!==null || $snapshot->away_score!==null)<p class="match-prediction-xg">Goluri estimate: <b>{{ $snapshot->home_score!==null?number_format((float)$snapshot->home_score,2,',','.'): '—' }}</b> – <b>{{ $snapshot->away_score!==null?number_format((float)$snapshot->away_score,2,',','.'): '—' }}</b></p>@endif
+    <p class="match-prediction-note">Estimarea afișată în lista meciurilor este salvată aici. Este o probabilitate statistică, nu o cotă oferită de bookmaker și nu implică automat o selecție recomandată.@if($snapshot->predicted_at) Calculată {{ $snapshot->predicted_at->format('d.m.Y H:i') }}.@endif</p>
+</section>
+@endif
+
+@if(!$bestRecommendation && !$match->latestBetlensPrediction)
+<section class="card empty">Nu există încă o analiză sau estimare disponibilă pentru acest meci.</section>
 @endif
 
 <div class="two-col analysis-columns"><div><section class="card"><div class="section-head compact"><h2>Forma echipelor</h2></div><table><tr><th>Echipă</th><th>Ultimele 5</th><th>GM</th><th>GP</th><th>xG</th><th>xGA</th></tr>@foreach([[$match->homeTeam,$homeStats],[$match->awayTeam,$awayStats]] as [$team,$stats])<tr><td><b>{{ $team->name }}</b></td><td><div class="form-row">@forelse($stats['form'] as $f)<span class="form-dot {{ $f==='L'?'loss':'' }}">{{ $f }}</span>@empty<span class="muted">—</span>@endforelse</div></td><td>{{ $stats['scored'] }}</td><td>{{ $stats['conceded'] }}</td><td>{{ $stats['xg'] }}</td><td>{{ $stats['xga'] }}</td></tr>@endforeach</table></section></div>

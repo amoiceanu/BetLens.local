@@ -59,7 +59,7 @@ return new class extends Migration
             $t->dateTime('detected_at');
             $t->dateTime('last_detected_at');
             $t->dateTime('resolved_at')->nullable();
-            $t->foreignId('reviewed_by')->nullable()->constrained('users')->nullOnDelete();
+            $t->unsignedBigInteger('reviewed_by')->nullable();
             $t->dateTime('reviewed_at')->nullable();
             $t->timestamps();
             $t->index(['status', 'severity', 'field'], 'coverage_discrepancy_filters');

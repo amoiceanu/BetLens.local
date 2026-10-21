@@ -73,7 +73,7 @@ return [
     |
     */
 
-    'connection' => env('SESSION_CONNECTION'),
+    'connection' => env('SESSION_CONNECTION', str_ends_with(strtolower((string) env('DB_HOST', '')), '.ondigitalocean.com') ? 'mysql_auth' : null),
 
     /*
     |--------------------------------------------------------------------------

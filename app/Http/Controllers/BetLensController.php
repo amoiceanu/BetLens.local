@@ -75,27 +75,76 @@ class BetLensController extends Controller
         $provider=$matchUrl!=='' ? $urlParser->provider($matchUrl) : null;
         $firstAliases=$aliasMatcher->aliasesFor($team1,$provider);
         $secondAliases=$aliasMatcher->aliasesFor($team2,$provider);
+        $urlExactMatch=false;
+        $urlPartialMatch=false;
+        $onlyWithProbabilities=$request->boolean('with_probabilities');
         $includeStarted=$first!=='' || $second!=='' || $matchUrl!=='';
         $items=$matches->searchable($includeStarted);
         if ($urlError) $items=$items->take(0);
         if($request->filled('league')) $items=$items->where('league_id',(int)$request->league);
-        if($includeStarted) $items=$items->filter(function($match)use($team1,$team2,$firstAliases,$secondAliases,$aliasMatcher,$provider,$matchUrl){
-            $sameOrder=$aliasMatcher->matches($match->homeTeam,$team1,$firstAliases,$provider)
-                && $aliasMatcher->matches($match->awayTeam,$team2,$secondAliases,$provider);
-            return $matchUrl!=='' ? $sameOrder : $sameOrder
-                || ($aliasMatcher->matches($match->awayTeam,$team1,$firstAliases,$provider)
-                    && $aliasMatcher->matches($match->homeTeam,$team2,$secondAliases,$provider));
-        });
+        if($includeStarted) {
+            $matchesTeamPair = function ($match, $firstName, $secondName) use ($firstAliases, $secondAliases, $aliasMatcher, $provider) {
+                $sameOrder = $aliasMatcher->matches($match->homeTeam, $firstName, $firstAliases, $provider)
+                    && $aliasMatcher->matches($match->awayTeam, $secondName, $secondAliases, $provider);
+                $reverseOrder = $aliasMatcher->matches($match->awayTeam, $firstName, $firstAliases, $provider)
+                    && $aliasMatcher->matches($match->homeTeam, $secondName, $secondAliases, $provider);
+
+                return $sameOrder || $reverseOrder;
+            };
+
+            if ($matchUrl !== '' && $team1 !== '' && $team2 !== '') {
+                $exactItems = $items->filter(fn ($match) => $matchesTeamPair($match, $team1, $team2));
+                $urlExactMatch = $exactItems->isNotEmpty();
+
+                if ($urlExactMatch) {
+                    $items = $exactItems;
+                } else {
+                    // If the exact fixture is absent, show nearby database matches containing
+                    // either URL team, on either side of the fixture, as useful alternatives.
+                    $partialItems = $items->map(function ($match) use ($team1, $team2, $firstAliases, $secondAliases, $aliasMatcher, $provider) {
+                        $homeMatchesFirst = $aliasMatcher->matchesPartially($match->homeTeam, $team1, $firstAliases, $provider);
+                        $awayMatchesFirst = $aliasMatcher->matchesPartially($match->awayTeam, $team1, $firstAliases, $provider);
+                        $homeMatchesSecond = $aliasMatcher->matchesPartially($match->homeTeam, $team2, $secondAliases, $provider);
+                        $awayMatchesSecond = $aliasMatcher->matchesPartially($match->awayTeam, $team2, $secondAliases, $provider);
+                        $match->url_search_match_count = (int) ($homeMatchesFirst || $awayMatchesFirst)
+                            + (int) ($homeMatchesSecond || $awayMatchesSecond);
+
+                        return $match;
+                    })->filter(fn ($match) => $match->url_search_match_count > 0)
+                        ->sortByDesc('url_search_match_count')->values();
+
+                    $urlPartialMatch = $partialItems->isNotEmpty();
+                    $items = $partialItems;
+                }
+            } else {
+                $items = $items->filter(fn ($match) => $matchesTeamPair($match, $team1, $team2));
+            }
+        }
+        if ($onlyWithProbabilities) {
+            $items = $items->filter(function ($match): bool {
+                $hasRecommendationProbability = $match->recommendations->contains(fn ($recommendation) => $recommendation->model_probability !== null);
+                $prediction = $match->latestBetlensPrediction;
+                $hasModelPrediction = $prediction && collect([
+                    $prediction->home_win_probability,
+                    $prediction->draw_probability,
+                    $prediction->away_win_probability,
+                ])->contains(fn ($probability) => $probability !== null);
+
+                return $hasRecommendationProbability || $hasModelPrediction;
+            });
+        }
+        $listedMatches = fn($query) => $includeStarted ? $query : $query->where('kickoff_at','>',now());
         $leagues=League::where('active',true)
-            ->withCount(['matches as listed_matches_count'=>fn($query)=>$includeStarted ? $query : $query->where('kickoff_at','>',now())])
+            ->whereHas('matches', $listedMatches)
+            ->withCount(['matches as listed_matches_count'=>$listedMatches])
             ->orderBy('name')
             ->get();
-        return view('matches.index',['matches'=>$items->values(),'leagues'=>$leagues,'team1'=>$team1,'team2'=>$team2,'includeStarted'=>$includeStarted,'matchUrl'=>$matchUrl,'urlError'=>$urlError]);
+        return view('matches.index',['matches'=>$items->values(),'leagues'=>$leagues,'team1'=>$team1,'team2'=>$team2,'includeStarted'=>$includeStarted,'matchUrl'=>$matchUrl,'urlError'=>$urlError,'urlExactMatch'=>$urlExactMatch,'urlPartialMatch'=>$urlPartialMatch,'onlyWithProbabilities'=>$onlyWithProbabilities]);
     }
 
     public function match(Request $request, FootballMatch $match, FootballStatsService $stats)
     {
-        $match->load(['league','homeTeam','awayTeam','recommendations.market','latestWeatherSnapshot']);
+        $match->load(['league','homeTeam','awayTeam','recommendations.market','latestWeatherSnapshot','latestBetlensPrediction']);
         $ranked=$match->recommendations->sortByDesc(fn($recommendation)=>($recommendation->eligible?1000:0)+$recommendation->score+max(0,$recommendation->value*100));
         $bestRecommendation=$ranked->firstWhere('eligible',true)??$ranked->first();
         $alternatives=$ranked->filter(fn($recommendation)=>$recommendation->id!==$bestRecommendation?->id && ($recommendation->model_version==='poisson-v1'||$bestRecommendation?->model_version!=='poisson-v1'))->values();
@@ -237,17 +286,40 @@ class BetLensController extends Controller
             'number'=>$number,
             'name'=>$level['name'],
             'description'=>$level['description'],
+            'details'=>$level['details'],
             'icon'=>$level['icon'],
-            'sources'=>$sources->filter(fn(DataSource $source)=>$source->levels->contains('level',$number))->values(),
+            'sources'=>$sources->filter(fn(DataSource $source)=>$source->levels->contains('level',$number)
+                && SourceCatalog::levelApplies($source->slug,(int)$number))->values(),
         ]);
         $unassignedSources=$sources->filter(fn(DataSource $source)=>$source->levels->isEmpty())->values();
-        return view('data-sources.index',compact('sources','levelSections','unassignedSources'));
+        $masterImport = \App\Models\MasterImport::latest('id')->first();
+        return view('data-sources.index',compact('sources','levelSections','unassignedSources','masterImport'));
     }
 
-    public function importAudit()
+    public function importAudit(Request $request)
     {
-        $importAudits=\Illuminate\Support\Facades\DB::table('import_audits')->latest('imported_at')->latest('id')->paginate(50, ['*'], 'audit_page');
-        return view('admin.import-audit',compact('importAudits'));
+        $filters = $request->validate([
+            'job' => ['nullable', 'string', 'max:255'],
+            'provider' => ['nullable', 'string', 'max:255'],
+        ]);
+        $auditRows = \Illuminate\Support\Facades\DB::table('import_audits');
+        $jobOptions = (clone $auditRows)
+            ->selectRaw("COALESCE(NULLIF(job_name, ''), import_type) as job_value")
+            ->distinct()->orderBy('job_value')->pluck('job_value')->filter()->values();
+        $providerOptions = (clone $auditRows)->whereNotNull('provider')->where('provider', '!=', '')
+            ->distinct()->orderBy('provider')->pluck('provider')->values();
+        $providerNames = DataSource::whereIn('slug', $providerOptions)->pluck('name', 'slug');
+        $query = clone $auditRows;
+        if (filled($filters['job'] ?? null)) {
+            $query->whereRaw("COALESCE(NULLIF(job_name, ''), import_type) = ?", [$filters['job']]);
+        }
+        if (filled($filters['provider'] ?? null)) {
+            $query->where('provider', $filters['provider']);
+        }
+        $importAudits = $query->latest('imported_at')->latest('id')
+            ->paginate(50, ['*'], 'audit_page')->appends($request->query());
+
+        return view('admin.import-audit', compact('importAudits', 'jobOptions', 'providerOptions', 'providerNames', 'filters'));
     }
 
     public function destroyImportAudit(int $audit)

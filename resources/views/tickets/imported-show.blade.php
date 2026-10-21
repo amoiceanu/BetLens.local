@@ -16,7 +16,7 @@
             <section class="card imported-overview" aria-labelledby="imported-ticket-title">
                 <div class="imported-overview-head">
                     <span class="imported-state-icon {{ $state }}"><i data-lucide="{{ $stateIcon }}" size="23"></i></span>
-                    <div class="imported-overview-title"><h1 id="imported-ticket-title">Bilet #{{ $ticket->reference }}</h1><p>Plasat la {{ $ticket->placed_at?->format('d.m.Y · H:i') ?? 'dată indisponibilă' }} <span class="imported-source-pill"><i data-lucide="download" size="13"></i>Importat din SuperBet</span></p></div>
+                    <div class="imported-overview-title"><h1 id="imported-ticket-title">Bilet #{{ $ticket->reference }}</h1><p>Plasat la {{ $ticket->placed_at?->format('d.m.Y · H:i') ?? 'dată indisponibilă' }} <span class="imported-source-pill"><i data-lucide="download" size="13"></i>Importat din SuperBet</span>@if($ticket->notes)<span class="imported-source-pill"><i data-lucide="bookmark" size="13"></i>{{ $ticket->notes }}</span>@endif</p></div>
                     <span class="imported-state-badge {{ $state }}"><i data-lucide="{{ $stateIcon }}" size="17"></i>{{ $ticket->status_label }}</span>
                 </div>
                 <div class="imported-overview-metrics">

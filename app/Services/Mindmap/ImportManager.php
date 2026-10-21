@@ -3,11 +3,10 @@
 namespace App\Services\Mindmap;
 
 use App\Jobs\RunMindmapImport;
-use App\Jobs\ImportApiFootballFromDigitalOcean;
+use App\Jobs\ImportApiFootballLocally;
 use App\Models\DataSource;
 use App\Models\ImportRun;
 use App\Services\ImportAuditService;
-use App\Services\Imports\DigitalOceanFunctionService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -16,7 +15,7 @@ class ImportManager
     public function canImport(DataSource $source, ?int $leagueId = null): bool
     {
         if (! $source->active || ! $source->import_enabled) return false;
-        if ($source->slug === 'api-football') return app(DigitalOceanFunctionService::class)->configured('api_football_l1');
+        if ($source->slug === 'api-football') return $source->is_configured;
         if (! $source->is_configured) return false;
         if ($source->import_method === 'internal_model') return $source->slug === 'betlens-model';
         if (in_array($source->import_method, ['manual_json', 'manual_csv'], true)) return true;
@@ -37,12 +36,12 @@ class ImportManager
             if ($locked->importRuns()->whereIn('status', ['queued', 'running'])->exists()) {
                 throw ValidationException::withMessages(['source' => 'Un import pentru această sursă este deja în coadă sau în curs.']);
             }
-            $functionImport = $locked->slug === 'api-football';
+            $apiFootballImport = $locked->slug === 'api-football';
             $run = $locked->importRuns()->create([
-                'league_id' => $functionImport ? null : $leagueId, 'season_id' => $functionImport ? null : $seasonId,
-                'status' => 'queued', 'import_method' => $functionImport ? 'digitalocean_function' : $locked->import_method,
-                'function_name' => $functionImport ? config('services.digitalocean_functions.api_football_l1.name') : null,
-                'level' => $functionImport ? 1 : null, 'data_format' => $functionImport ? 'JSON' : null,
+                'league_id' => $apiFootballImport ? null : $leagueId, 'season_id' => $apiFootballImport ? null : $seasonId,
+                'status' => 'queued', 'import_method' => $apiFootballImport ? 'api_football_local' : $locked->import_method,
+                'function_name' => null,
+                'level' => $apiFootballImport ? 1 : null, 'data_format' => $apiFootballImport ? 'JSON' : null,
                 'execution_source' => config('betlens.import_execution_source', 'Laravel-local'),
             ]);
             app(ImportAuditService::class)->syncRun($run);
@@ -50,10 +49,30 @@ class ImportManager
         });
 
         if ($dispatch) {
-            if ($source->slug === 'api-football') ImportApiFootballFromDigitalOcean::dispatch($run->id)
-                ->onQueue(config('services.digitalocean_functions.api_football_l1.queue', 'betlens-api-football-l1'));
+            if ($source->slug === 'api-football') ImportApiFootballLocally::dispatch($run->id);
             else RunMindmapImport::dispatch($run->id);
         }
+        return $run;
+    }
+
+    public function resume(ImportRun $run): ImportRun
+    {
+        $run->loadMissing('source');
+        if (! $run->source || ! in_array($run->status, ['failed', 'partial'], true)) {
+            throw ValidationException::withMessages(['source' => 'Doar o rulare eșuată sau parțială poate fi reluată.']);
+        }
+        $source = $run->source;
+        $run->update(['status' => 'queued', 'finished_at' => null, 'records_errors' => 0,
+            'message' => 'Reluare de la ultimul checkpoint salvat.',
+            'metadata' => array_merge($run->metadata ?? [], ['resume_count' => (int) data_get($run->metadata, 'resume_count', 0) + 1])]);
+        $run->refresh();
+
+        if ($source->slug === 'api-football') {
+            ImportApiFootballLocally::dispatch($run->id);
+        } else {
+            RunMindmapImport::dispatch($run->id);
+        }
+
         return $run;
     }
 }
