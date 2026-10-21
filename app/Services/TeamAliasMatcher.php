@@ -13,6 +13,7 @@ class TeamAliasMatcher
     public function normalize(string $name): string
     {
         $name = preg_replace('/\butd\b/i', 'united', Str::ascii($name));
+        $name = preg_replace('/\bmailand\b/i', 'milano', $name);
         return preg_replace('/[^a-z0-9]+/', '', strtolower($name));
     }
 

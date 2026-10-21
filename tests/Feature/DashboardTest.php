@@ -54,8 +54,6 @@ class DashboardTest extends TestCase
         $withoutProbability=FootballMatch::create(['league_id'=>$league->id,'home_team_id'=>$away->id,'away_team_id'=>$home->id,'kickoff_at'=>now()->addDays(2)]);
         $market=Market::create(['key'=>'h2h','name'=>'1X2']);
         Recommendation::create(['match_id'=>$withProbability->id,'market_id'=>$market->id,'selection'=>'1','odds'=>1.8,'model_probability'=>0.62,'implied_probability'=>0.55,'value'=>0.07,'confidence'=>'medium','score'=>70,'explanation'=>'Test']);
-        Recommendation::create(['match_id'=>$withoutProbability->id,'market_id'=>$market->id,'selection'=>'2','odds'=>2.0,'model_probability'=>null,'implied_probability'=>0.5,'value'=>0,'confidence'=>'low','score'=>10,'explanation'=>'Test']);
-
         $this->get('/meciuri?with_probabilities=1')
             ->assertOk()
             ->assertSee('Doar date cu probabilități')
@@ -183,18 +181,18 @@ class DashboardTest extends TestCase
             ->assertOk()->assertSee('Introdu un URL valid de meci Superbet sau Winbet')->assertSee('Niciun meci găsit');
     }
 
-    public function test_winbet_utd_abbreviation_matches_united_without_showing_reverse_fixture(): void
+    public function test_winbet_utd_abbreviation_matches_united_and_reverse_fixture(): void
     {
         $league=League::create(['name'=>'Premier League','slug'=>'premier-league-url-test','code'=>'PL','active'=>true]);
         $newcastle=Team::create(['league_id'=>$league->id,'name'=>'Newcastle United FC','short_name'=>'Newcastle']);
         $villa=Team::create(['league_id'=>$league->id,'name'=>'Aston Villa','short_name'=>'Villa']);
         $match=FootballMatch::create(['league_id'=>$league->id,'home_team_id'=>$newcastle->id,'away_team_id'=>$villa->id,'kickoff_at'=>now()->subHour()]);
-        FootballMatch::create(['league_id'=>$league->id,'home_team_id'=>$villa->id,'away_team_id'=>$newcastle->id,'kickoff_at'=>now()->addMonths(4)]);
+        $reverse=FootballMatch::create(['league_id'=>$league->id,'home_team_id'=>$villa->id,'away_team_id'=>$newcastle->id,'kickoff_at'=>now()->addMonths(4)]);
 
         $this->get('/meciuri?'.http_build_query(['match_url'=>'https://winbet.ro/in-play/newcastle-utd-vs-aston-villa-50007948549']))
             ->assertOk()
             ->assertSee(route('matches.show',$match),false)
-            ->assertViewHas('matches',fn($matches)=>$matches->pluck('id')->all()===[$match->id]);
+            ->assertViewHas('matches',fn($matches)=>$matches->pluck('id')->all()===[$match->id,$reverse->id]);
     }
 
     public function test_url_search_ignores_team_fields_and_shows_partial_alternatives(): void

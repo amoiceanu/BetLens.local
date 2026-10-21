@@ -118,7 +118,10 @@ class SourceCoverageTest extends TestCase
         $row = app(CoverageMatrix::class)->present($query->first());
         $this->assertSame(100.0, $row->percent);
         $this->assertSame(1, $row->denominator);
-        $this->admin()->get(route('admin.coverage', ['source' => $source->id, 'league' => $game->league_id, 'field' => 'home_corners']))->assertOk()->assertSee('Suportat, neacoperit');
+        $profile = app(\App\Services\Coverage\FieldRegistry::class)->profile('api-football');
+        $this->assertArrayHasKey('home_corners', $profile);
+        $this->assertArrayNotHasKey('temperature_c', $profile);
+        $this->admin()->get(route('admin.coverage', ['source' => $source->id, 'league' => $game->league_id, 'field' => 'home_corners']))->assertOk()->assertSee('0 din 1 valori aplicabile');
     }
 
     public function test_conflicts_are_stable_ignored_resolved_and_reopened_without_overwriting_sources(): void

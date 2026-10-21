@@ -37,7 +37,7 @@ class AdminMindmapTest extends TestCase
     {
         $before = DataSource::count();
         $this->withSession(['admin_user_id' => User::factory()->create(['is_admin' => true])->id])->get(route('admin.mindmap'))
-            ->assertOk()->assertSee('BetLens – Data Mindmap')->assertSee('L1 – Open APIs')->assertSee('L6 – Inteligență predictivă')
+            ->assertOk()->assertSee('BetLens – Data Mindmap')->assertSee('L1 – Date de bază')->assertSee('L6 – Inteligență predictivă')
             ->assertSee('id="ic-fullscreen"', false)->assertSee('Afișează harta pe ecran complet')
             ->assertSee('Sportmonks')->assertSee('GSP.ro · candidat')->assertSee('Niciodată')
             ->assertSee('The Odds API')->assertDontSee('Date simulate');
