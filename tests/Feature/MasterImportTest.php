@@ -232,4 +232,29 @@ class MasterImportTest extends TestCase
         $this->assertNotNull($run->fresh()->finished_at);
         $this->assertSame('healthy', $source->fresh()->status);
     }
+
+    public function test_coordinator_advances_pending_source_and_completes_after_skipped_sources(): void
+    {
+        Queue::fake();
+        $source=DataSource::where('slug','openligadb')->firstOrFail();
+        $source->update(['active'=>true,'import_enabled'=>true,'import_method'=>'existing',
+            'verification_url'=>\App\Services\Mindmap\SourceCatalog::ENDPOINTS['openligadb'],'credential_env'=>null]);
+        $master=MasterImport::create(['status'=>'queued','items'=>[[
+            'source_id'=>$source->id,'slug'=>$source->slug,'name'=>$source->name,'level'=>1,
+            'status'=>'pending','message'=>null,'import_run_id'=>null,
+        ]],'current_index'=>0,'started_at'=>now()]);
+
+        app(MasterImportCoordinator::class)->advance($master);
+
+        $master->refresh();
+        $this->assertSame('running',$master->status);
+        $this->assertSame('queued',$master->items[0]['status']);
+        $this->assertNotNull($master->current_import_run_id);
+        Queue::assertPushed(\App\Jobs\RunMindmapImport::class);
+
+        $master->update(['items'=>array_replace_recursive($master->items,[[ 'status'=>'skipped' ]]),'current_import_run_id'=>null,'current_index'=>0]);
+        app(MasterImportCoordinator::class)->advance($master);
+        $this->assertSame('completed',$master->fresh()->status);
+        $this->assertNotNull($master->fresh()->finished_at);
+    }
 }

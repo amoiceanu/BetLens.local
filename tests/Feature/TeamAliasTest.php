@@ -121,4 +121,22 @@ class TeamAliasTest extends TestCase
         $this->assertDatabaseCount('team_aliases', 0);
         $this->assertNull($resolver->resolve('Canonical Alternative'));
     }
+
+    public function test_alias_resolver_returns_confident_suggestions_and_rejects_ambiguous_names(): void
+    {
+        $league=League::create(['name'=>'Liga Suggest','slug'=>'alias-suggest','code'=>'AS','active'=>true]);
+        $team=Team::create(['league_id'=>$league->id,'name'=>'Aston Villa','short_name'=>'Villa']);
+        $resolver=app(\App\Services\TeamAliasResolver::class);
+
+        $this->assertNull($resolver->resolve('  '));
+        $this->assertSame([], $resolver->suggestions(''));
+        $suggestions=$resolver->suggestions('Aston Villa');
+        $this->assertSame($team->id,$suggestions[0]['team']->id);
+        $this->assertGreaterThanOrEqual(0.55,$suggestions[0]['score']);
+        $this->assertSame([], $resolver->suggestions('no matching team'));
+
+        Team::create(['league_id'=>$league->id,'name'=>'Aston Vilia','short_name'=>'Aston Vilia']);
+        $resolver->forgetCache();
+        $this->assertSame([], $resolver->suggestions('Aston Vila'));
+    }
 }
